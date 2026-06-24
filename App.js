@@ -129,7 +129,7 @@ export default function App() {
                 onPress={() => { setRole(r.id); setActiveTab('journal'); }}
                 style={[styles.roleBtn, role === r.id && styles.roleBtnActive]}
               >
-                <Text style={styles.roleBtnText}>{r.label} {r.id === 'proprietaire' ? 'Proprio' : 'Gardien'}</Text>
+                <Text style={[styles.roleBtnText, role === r.id && styles.roleBtnTextActive]}>{r.label} {r.id === 'proprietaire' ? 'Proprio' : 'Gardien'}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -201,8 +201,9 @@ const styles = StyleSheet.create({
 
   roleToggle: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, padding: 3, gap: 2 },
   roleBtn:    { paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm - 2 },
-  roleBtnActive: { backgroundColor: COLORS.white },
-  roleBtnText:   { fontSize: 12, ...FONTS.bold, color: COLORS.white },
+  roleBtnActive:     { backgroundColor: COLORS.white },
+  roleBtnText:       { fontSize: 12, ...FONTS.bold, color: COLORS.white },
+  roleBtnTextActive: { color: COLORS.bark },
 
   screen: { flex: 1 },
 
