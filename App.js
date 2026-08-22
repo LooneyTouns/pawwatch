@@ -1,25 +1,59 @@
 // App.js — Point d'entrée PawWatch
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar } from 'react-native';
-import { StripeProvider } from '@stripe/stripe-react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image } from 'react-native';
+
+const LEDGER_ICON = require('./assets/ledger-icon.png');
 import { COLORS, FONTS, RADIUS } from './lib/theme';
 import { getUser, signOut }       from './lib/supabase';
 import { useNotifications, scheduleJournalReminder } from './hooks/useNotifications';
 
 // Écrans
-import LoginScreen      from './screens/auth/LoginScreen';
-import JournalScreen    from './screens/proprietaire/JournalScreen';
-import PaiementScreen   from './screens/proprietaire/PaiementScreen';
-import JournalFormScreen from './screens/gardien/JournalFormScreen';
+import LoginScreen        from './screens/auth/LoginScreen';
+import JournalScreen      from './screens/proprietaire/JournalScreen';
+import PaiementScreen     from './screens/proprietaire/PaiementScreen';
+import JournalFormScreen  from './screens/gardien/JournalFormScreen';
+import JournalListScreen  from './screens/gardien/JournalListScreen';
+import DemandesScreen        from './screens/gardien/DemandesScreen';
+import NotificationsScreen   from './screens/shared/NotificationsScreen';
+import ProfilScreen          from './screens/shared/ProfilScreen';
+import SearchPetsitterScreen from './screens/proprietaire/SearchPetsitterScreen';
+import MessagesScreen        from './screens/shared/MessagesScreen';
+import ChatScreen            from './screens/shared/ChatScreen';
 
-// 👉 Clé publique Stripe (dashboard.stripe.com)
-const STRIPE_KEY = 'pk_test_TON_CLE_PUBLIQUE_STRIPE';
+// Conversations demo pré-peuplées
+const DEMO_CONVERSATIONS = [
+  {
+    id: 'conv_demo_1',
+    partnerName: 'Emma Rousseau',
+    partnerSpecialite: '🐕 Dogsitter · 🐈 Catsitter · Pension',
+    animalNom: null,
+    unread: 2,
+    messages: [
+      { id: 'er1', text: "Bonjour ! Je serais ravie de garder votre animal 🐾", from: 'them', timestamp: new Date(Date.now() - 7_200_000) },
+      { id: 'er2', text: "Il est actif ? Il aime les longues promenades ?", from: 'them', timestamp: new Date(Date.now() - 7_140_000) },
+    ],
+  },
+  {
+    id: 'conv_demo_2',
+    partnerName: 'Thomas R.',
+    partnerSpecialite: '🐕 Dogsitter · 🐈 Catsitter',
+    animalNom: null,
+    unread: 0,
+    messages: [
+      { id: 'tr1', text: "Je confirme la garde du 20 au 23 juillet ✅", from: 'them', timestamp: new Date(Date.now() - 86_400_000) },
+      { id: 'tr2', text: "Parfait, merci ! On se retrouve à 9h alors.", from: 'me', timestamp: new Date(Date.now() - 86_340_000) },
+    ],
+  },
+];
 
 // Données de garde mock (remplace par un vrai fetch Supabase)
 const MOCK_GARDE = {
   id: 'garde-001',
   date_debut: '2026-06-23', date_fin: '2026-06-26',
-  animaux:  { nom: 'Luna', emoji: '🐕', espece: 'Chien' },
+  animaux: [
+    { id: 'animal-1', nom: 'Luna',  type: 'chien', race: 'Golden Retriever' },
+    { id: 'animal-2', nom: 'Minou', type: 'chat',  race: 'Maine Coon'       },
+  ],
   users:    { nom: 'Sophie M.' },
   journaux: [],
 };
@@ -28,10 +62,18 @@ const MOCK_GARDE = {
 const PawIcon = () => <Text style={{ fontSize: 20 }}>🐾</Text>;
 
 export default function App() {
-  const [user,      setUser]      = useState(null);
-  const [role,      setRole]      = useState(null); // 'proprietaire' | 'gardien'
-  const [activeTab, setActiveTab] = useState('journal');
-  const [loading,   setLoading]   = useState(true);
+  const [user,              setUser]              = useState(null);
+  const [role,              setRole]              = useState(null);
+  const [activeTab,         setActiveTab]         = useState('journal');
+  const [loading,           setLoading]           = useState(true);
+  const [journalAnimal,          setJournalAnimal]          = useState(null);
+  const [journauxCompletes,      setJournauxCompletes]      = useState([]);
+  const [profilPetsitterComplet, setProfilPetsitterComplet] = useState(false);
+
+  // ── Messagerie ──
+  const [conversations,        setConversations]        = useState(DEMO_CONVERSATIONS);
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  const activeConversation = conversations.find(c => c.id === activeConversationId) ?? null;
 
   // Hook notifications
   useNotifications(user?.id);
@@ -51,9 +93,9 @@ export default function App() {
   const handleLogin = (u) => {
     setUser(u);
     setRole(u.user_metadata?.role ?? 'proprietaire');
-    // Planifier rappel quotidien si gardien
-    if (u.user_metadata?.role === 'gardien') {
-      scheduleJournalReminder(u.user_metadata?.nom ?? 'Gardien');
+    // Planifier rappel quotidien si petsitter ou les_deux
+    if (u.user_metadata?.role === 'petsitter' || u.user_metadata?.role === 'les_deux') {
+      scheduleJournalReminder(u.user_metadata?.nom ?? 'Petsitter').catch(() => {});
     }
   };
 
@@ -64,6 +106,50 @@ export default function App() {
     setActiveTab('journal');
   };
 
+  // Crée une conversation après confirmation d'une garde avec un petsitter
+  const handleMatch = (petsitter) => {
+    const convId = `conv_${Date.now()}`;
+    const newConv = {
+      id: convId,
+      partnerName: petsitter.nom,
+      partnerSpecialite: petsitter.animaux?.join(' · ') ?? 'Petsitter',
+      animalNom: null,
+      unread: 1,
+      messages: [
+        {
+          id: `msg_${Date.now()}`,
+          text: `Bonjour ! J'ai bien reçu votre demande de garde. Je serais ravi(e) de m'occuper de votre compagnon 🐾 N'hésitez pas à me poser des questions !`,
+          from: 'them',
+          timestamp: new Date(),
+        },
+      ],
+    };
+    setConversations(prev => [newConv, ...prev]);
+    setActiveConversationId(convId);
+    setActiveTab('messages');
+  };
+
+  // Ajoute un message dans une conversation (from = 'me' | 'them')
+  const handleSendMessage = (convId, text, from = 'me') => {
+    const newMsg = {
+      id: `msg_${Date.now()}_${Math.floor(Math.random() * 9999)}`,
+      text,
+      from,
+      timestamp: new Date(),
+    };
+    setConversations(prev => prev.map(c => {
+      if (c.id !== convId) return c;
+      return {
+        ...c,
+        messages: [...c.messages, newMsg],
+        // badge non-lu seulement si message entrant et conversation pas ouverte
+        unread: from === 'them' && activeConversationId !== convId
+          ? (c.unread || 0) + 1
+          : c.unread,
+      };
+    }));
+  };
+
   if (loading) return (
     <View style={styles.splash}>
       <Text style={{ fontSize: 64 }}>🐾</Text>
@@ -72,42 +158,122 @@ export default function App() {
   );
 
   if (!user) return (
-    <StripeProvider publishableKey={STRIPE_KEY}>
-      <LoginScreen onLogin={handleLogin} />
-    </StripeProvider>
+    <LoginScreen onLogin={handleLogin} />
   );
 
   // Navigation tabs selon rôle
+  const msgUnread = conversations.reduce((s, c) => s + (c.unread || 0), 0);
+  const msgIcon   = msgUnread > 0 ? '🔴' : '💬';
+
+  const journalTab = { id: 'journal', image: LEDGER_ICON, label: 'Journal' };
+
   const tabs = role === 'proprietaire'
     ? [
-        { id: 'journal',  icon: '📋', label: 'Journal'  },
-        { id: 'paiement', icon: '💳', label: 'Paiement' },
+        journalTab,
+        { id: 'chercher', icon: '🔍', label: 'Chercher' },
+        { id: 'messages', icon: msgIcon, label: 'Messages' },
         { id: 'notifs',   icon: '🔔', label: 'Notifs'   },
         { id: 'profil',   icon: '👤', label: 'Profil'   },
       ]
-    : [
-        { id: 'journal',  icon: '📋', label: 'Journal'  },
+    : role === 'petsitter'
+    ? [
+        journalTab,
+        { id: 'messages', icon: msgIcon, label: 'Messages' },
         { id: 'demandes', icon: '📨', label: 'Demandes' },
         { id: 'notifs',   icon: '🔔', label: 'Notifs'   },
         { id: 'profil',   icon: '👤', label: 'Profil'   },
+      ]
+    : /* les_deux */ [
+        journalTab,
+        { id: 'chercher', icon: '🔍', label: 'Chercher' },
+        { id: 'messages', icon: msgIcon, label: 'Messages' },
+        { id: 'demandes', icon: '📨', label: 'Demandes' },
+        { id: 'profil',   icon: '👤', label: 'Profil'   },
       ];
+
+  const isPetsitterRole = role === 'petsitter' || role === 'les_deux';
+
+  const renderJournalPetsitter = () => {
+    if (journalAnimal) {
+      return (
+        <JournalFormScreen
+          garde={{ ...MOCK_GARDE, animaux: journalAnimal }}
+          user={user}
+          onBack={() => setJournalAnimal(null)}
+          onSubmit={() => {
+            setJournauxCompletes(prev => [...prev, journalAnimal.id]);
+            setJournalAnimal(null);
+          }}
+        />
+      );
+    }
+    return (
+      <JournalListScreen
+        garde={MOCK_GARDE}
+        journauxCompletes={journauxCompletes}
+        onSelectAnimal={setJournalAnimal}
+      />
+    );
+  };
+
+  const renderMessages = () => {
+    if (activeConversation) {
+      return (
+        <ChatScreen
+          conversation={activeConversation}
+          onBack={() => setActiveConversationId(null)}
+          onSend={handleSendMessage}
+        />
+      );
+    }
+    return (
+      <MessagesScreen
+        conversations={conversations}
+        onOpenChat={(conv) => {
+          // Marquer comme lu à l'ouverture
+          setConversations(prev => prev.map(c =>
+            c.id === conv.id ? { ...c, unread: 0 } : c
+          ));
+          setActiveConversationId(conv.id);
+        }}
+      />
+    );
+  };
 
   const renderScreen = () => {
     if (role === 'proprietaire') {
       if (activeTab === 'journal')  return <JournalScreen  garde={MOCK_GARDE} user={user} />;
-      if (activeTab === 'paiement') return <PaiementScreen garde={MOCK_GARDE} />;
-      if (activeTab === 'notifs')   return <PlaceholderScreen title="Notifications" icon="🔔" />;
+      if (activeTab === 'chercher') return <SearchPetsitterScreen user={user} onMatch={handleMatch} />;
+      if (activeTab === 'messages') return renderMessages();
+      if (activeTab === 'notifs')   return <NotificationsScreen />;
       if (activeTab === 'profil')   return <ProfilScreen user={user} onLogout={handleLogout} />;
-    } else {
-      if (activeTab === 'journal')  return <JournalFormScreen garde={MOCK_GARDE} user={user} />;
-      if (activeTab === 'demandes') return <PlaceholderScreen title="Demandes reçues" icon="📨" />;
-      if (activeTab === 'notifs')   return <PlaceholderScreen title="Notifications" icon="🔔" />;
-      if (activeTab === 'profil')   return <ProfilScreen user={user} onLogout={handleLogout} />;
+    }
+    if (role === 'petsitter') {
+      if (activeTab === 'journal')  return renderJournalPetsitter();
+      if (activeTab === 'messages') return renderMessages();
+      if (activeTab === 'demandes') return <DemandesScreen profilComplet={profilPetsitterComplet} />;
+      if (activeTab === 'notifs')   return <NotificationsScreen />;
+      if (activeTab === 'profil')   return (
+        <ProfilScreen user={user} onLogout={handleLogout}
+          profilComplet={profilPetsitterComplet}
+          onProfilComplet={() => setProfilPetsitterComplet(true)} />
+      );
+    }
+    if (role === 'les_deux') {
+      if (activeTab === 'journal')  return renderJournalPetsitter();
+      if (activeTab === 'chercher') return <SearchPetsitterScreen user={user} onMatch={handleMatch} />;
+      if (activeTab === 'messages') return renderMessages();
+      if (activeTab === 'demandes') return <DemandesScreen profilComplet={profilPetsitterComplet} />;
+      if (activeTab === 'profil')   return (
+        <ProfilScreen user={user} onLogout={handleLogout}
+          profilComplet={profilPetsitterComplet}
+          onProfilComplet={() => setProfilPetsitterComplet(true)} />
+      );
     }
   };
 
   return (
-    <StripeProvider publishableKey={STRIPE_KEY}>
+    <>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.bark} />
       <View style={styles.app}>
 
@@ -118,22 +284,38 @@ export default function App() {
             <Text style={styles.headerTitle}>PawWatch</Text>
           </View>
 
-          {/* Toggle Proprio / Gardien */}
+          {/* Toggle Proprio / Petsitter / Les deux */}
           <View style={styles.roleToggle}>
             {[
-              { id: 'proprietaire', label: '🏠' },
-              { id: 'gardien',      label: '🤝' },
+              { id: 'proprietaire', label: '🏠 Proprio'  },
+              { id: 'petsitter',    label: '🤝 Sitter'   },
+              { id: 'les_deux',     label: '🌟 Les deux' },
             ].map(r => (
               <TouchableOpacity
                 key={r.id}
                 onPress={() => { setRole(r.id); setActiveTab('journal'); }}
                 style={[styles.roleBtn, role === r.id && styles.roleBtnActive]}
               >
-                <Text style={[styles.roleBtnText, role === r.id && styles.roleBtnTextActive]}>{r.label} {r.id === 'proprietaire' ? 'Proprio' : 'Gardien'}</Text>
+                <Text style={[styles.roleBtnText, role === r.id && styles.roleBtnTextActive]}>{r.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
+
+        {/* Bandeau profil incomplet (petsitter / les_deux) */}
+        {isPetsitterRole && !profilPetsitterComplet && (
+          <TouchableOpacity
+            style={styles.profilGate}
+            onPress={() => setActiveTab('profil')}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.profilGateIcon}>⚠️</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.profilGateTitle}>Profil incomplet — aucune mise en relation possible</Text>
+              <Text style={styles.profilGateSub}>Appuie ici pour compléter ton profil →</Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
         {/* ── Contenu ── */}
         <View style={styles.screen}>
@@ -149,7 +331,10 @@ export default function App() {
               style={styles.navItem}
               activeOpacity={0.7}
             >
-              <Text style={styles.navIcon}>{tab.icon}</Text>
+              {tab.image
+                ? <Image source={tab.image} style={[styles.navIconImg, activeTab === tab.id && styles.navIconImgActive]} />
+                : <Text style={styles.navIcon}>{tab.icon}</Text>
+              }
               <Text style={[styles.navLabel, activeTab === tab.id && styles.navLabelActive]}>
                 {tab.label}
               </Text>
@@ -158,30 +343,10 @@ export default function App() {
           ))}
         </View>
       </View>
-    </StripeProvider>
+    </>
   );
 }
 
-// ─── Écran profil minimal ─────────────────────────────────────────
-const ProfilScreen = ({ user, onLogout }) => (
-  <View style={styles.profilContainer}>
-    <Text style={{ fontSize: 64 }}>👤</Text>
-    <Text style={styles.profilNom}>{user.user_metadata?.nom ?? user.email}</Text>
-    <Text style={styles.profilEmail}>{user.email}</Text>
-    <TouchableOpacity onPress={onLogout} style={styles.logoutBtn}>
-      <Text style={styles.logoutText}>Se déconnecter</Text>
-    </TouchableOpacity>
-  </View>
-);
-
-// ─── Placeholder ─────────────────────────────────────────────────
-const PlaceholderScreen = ({ title, icon }) => (
-  <View style={styles.placeholder}>
-    <Text style={{ fontSize: 52 }}>{icon}</Text>
-    <Text style={styles.placeholderTitle}>{title}</Text>
-    <Text style={styles.placeholderSub}>Fonctionnalité à venir</Text>
-  </View>
-);
 
 // ─── Styles globaux ───────────────────────────────────────────────
 const styles = StyleSheet.create({
@@ -200,12 +365,21 @@ const styles = StyleSheet.create({
   headerTitle: { color: COLORS.white, fontSize: 20, ...FONTS.heavy },
 
   roleToggle: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, padding: 3, gap: 2 },
-  roleBtn:    { paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.sm - 2 },
+  roleBtn:    { paddingHorizontal: 7, paddingVertical: 6, borderRadius: RADIUS.sm - 2 },
   roleBtnActive:     { backgroundColor: COLORS.white },
-  roleBtnText:       { fontSize: 12, ...FONTS.bold, color: COLORS.white },
+  roleBtnText:       { fontSize: 10, ...FONTS.bold, color: COLORS.white },
   roleBtnTextActive: { color: COLORS.bark },
 
   screen: { flex: 1 },
+
+  profilGate: {
+    backgroundColor: '#FEF3C7', borderBottomWidth: 1.5, borderBottomColor: '#FCD34D',
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 10,
+  },
+  profilGateIcon:  { fontSize: 18 },
+  profilGateTitle: { fontSize: 12, ...FONTS.heavy, color: '#92400E' },
+  profilGateSub:   { fontSize: 11, color: '#B45309', marginTop: 1 },
 
   bottomNav: {
     flexDirection: 'row',
@@ -216,17 +390,10 @@ const styles = StyleSheet.create({
   },
   navItem:  { flex: 1, alignItems: 'center', gap: 2 },
   navIcon:  { fontSize: 22 },
+  navIconImg:       { width: 24, height: 24, resizeMode: 'contain', opacity: 0.45 },
+  navIconImgActive: { opacity: 1 },
   navLabel: { fontSize: 10, ...FONTS.medium, color: COLORS.muted },
   navLabelActive: { color: COLORS.bark, ...FONTS.bold },
   navDot:   { width: 18, height: 3, borderRadius: 3, backgroundColor: COLORS.clay, marginTop: 2 },
 
-  profilContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  profilNom:   { fontSize: 22, ...FONTS.heavy, color: COLORS.ink, marginTop: 16 },
-  profilEmail: { fontSize: 14, color: COLORS.muted, marginTop: 4, marginBottom: 32 },
-  logoutBtn:   { backgroundColor: COLORS.warnBg, borderWidth: 1, borderColor: COLORS.warnBorder, borderRadius: RADIUS.md, padding: 14, paddingHorizontal: 32 },
-  logoutText:  { fontSize: 15, ...FONTS.bold, color: COLORS.clay },
-
-  placeholder:      { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
-  placeholderTitle: { fontSize: 20, ...FONTS.bold, color: COLORS.ink, marginTop: 16 },
-  placeholderSub:   { fontSize: 14, color: COLORS.muted, marginTop: 8 },
 });

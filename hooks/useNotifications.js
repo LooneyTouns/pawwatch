@@ -6,13 +6,17 @@ import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 
 // Configuration globale : afficher la notif même si l'app est ouverte
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+    }),
+  });
+} catch (e) {
+  console.warn('setNotificationHandler non disponible:', e.message);
+}
 
 export function useNotifications(userId) {
   const [expoPushToken, setExpoPushToken] = useState(null);
@@ -21,24 +25,28 @@ export function useNotifications(userId) {
   const responseListener = useRef();
 
   useEffect(() => {
-    registerForPushNotificationsAsync(userId).then(token => {
-      if (token) setExpoPushToken(token);
-    });
+    registerForPushNotificationsAsync(userId)
+      .then(token => { if (token) setExpoPushToken(token); })
+      .catch(e => console.warn('Push token error:', e.message));
 
-    // Écoute les notifs reçues (app ouverte)
-    notificationListener.current = Notifications.addNotificationReceivedListener(notif => {
-      setNotification(notif);
-    });
-
-    // Écoute les clics sur notif
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('Notif cliquée:', response);
-      // TODO: naviguer vers le bon écran selon response.notification.request.content.data
-    });
+    try {
+      notificationListener.current = Notifications.addNotificationReceivedListener(notif => {
+        setNotification(notif);
+      });
+      responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+        console.log('Notif cliquée:', response);
+      });
+    } catch (e) {
+      console.warn('Notification listeners non disponibles:', e.message);
+    }
 
     return () => {
-      Notifications.removeNotificationSubscription(notificationListener.current);
-      Notifications.removeNotificationSubscription(responseListener.current);
+      try {
+        if (notificationListener.current)
+          Notifications.removeNotificationSubscription(notificationListener.current);
+        if (responseListener.current)
+          Notifications.removeNotificationSubscription(responseListener.current);
+      } catch (e) {}
     };
   }, [userId]);
 
@@ -51,12 +59,17 @@ async function registerForPushNotificationsAsync(userId) {
     return null;
   }
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+  let finalStatus = 'undetermined';
+  try {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+  } catch (e) {
+    console.warn('Permissions notifs non disponibles:', e.message);
+    return null;
   }
 
   if (finalStatus !== 'granted') {
@@ -74,19 +87,16 @@ async function registerForPushNotificationsAsync(userId) {
     });
   }
 
-  const { data: token } = await Notifications.getExpoPushTokenAsync({
-    projectId: 'TON_PROJECT_ID', // ← Remplace avec ton Expo project ID (expo.dev)
-  });
-
-  // Sauvegarder le token dans Supabase pour envoyer des notifs ciblées
-  if (userId && token) {
-    await supabase
-      .from('users')
-      .update({ push_token: token })
-      .eq('id', userId);
+  try {
+    const { data: token } = await Notifications.getExpoPushTokenAsync();
+    if (userId && token) {
+      await supabase.from('users').update({ push_token: token }).eq('id', userId);
+    }
+    return token;
+  } catch (e) {
+    console.warn('Push token non disponible:', e.message);
+    return null;
   }
-
-  return token;
 }
 
 // ─── Envoyer une notif locale (test, rappels) ────────────────────

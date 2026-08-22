@@ -9,10 +9,35 @@ import { Badge, Avatar, Card, SectionLabel } from '../../components/UI';
 import { getJournaux, validerJournal } from '../../lib/supabase';
 import { sendLocalNotification } from '../../hooks/useNotifications';
 
+const DOG_ICON = require('../../assets/dog-icon.png');
+const CAT_ICON = require('../../assets/cat-icon.png');
+
+const AnimalAvatar = ({ animal, size = 60 }) => {
+  if (animal?.photo) {
+    return (
+      <Image
+        source={{ uri: animal.photo }}
+        style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: COLORS.sand }}
+      />
+    );
+  }
+  if (animal?.type === 'chien') return <Image source={DOG_ICON} style={{ width: size, height: size }} />;
+  if (animal?.type === 'chat')  return <Image source={CAT_ICON} style={{ width: size, height: size }} />;
+  return (
+    <Text style={{ fontSize: size * 0.75 }}>
+      {animal?.type === 'rongeur' ? '🐹' : animal?.type === 'equin' ? '🐴' : '🐾'}
+    </Text>
+  );
+};
+
 export default function JournalScreen({ garde, user }) {
   const [journaux, setJournaux]     = useState([]);
   const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+
+  const animaux = Array.isArray(garde.animaux)
+    ? garde.animaux
+    : garde.animaux ? [garde.animaux] : [];
 
   const load = useCallback(async () => {
     try {
@@ -33,7 +58,7 @@ export default function JournalScreen({ garde, user }) {
     setJournaux(j => j.map(x => x.id === journalId ? { ...x, vu_par_proprio: true } : x));
     await sendLocalNotification({
       title: '👍 Journal validé',
-      body: 'Le gardien a été notifié de votre validation.',
+      body: 'Le petsitter a été notifié de votre validation.',
     });
   };
 
@@ -51,17 +76,31 @@ export default function JournalScreen({ garde, user }) {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} tintColor={COLORS.bark} />}
     >
-      {/* Résumé animal */}
+      {/* Résumé animaux */}
       <Card style={styles.animalCard}>
-        <View style={styles.animalRow}>
-          <Text style={styles.animalEmoji}>{garde.animaux?.emoji ?? '🐕'}</Text>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.animalNom}>{garde.animaux?.nom}</Text>
-            <Text style={styles.animalGardien}>
-              Chez {garde.users?.nom} jusqu'au {new Date(garde.date_fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+        <View style={styles.gardeHeader}>
+          <View>
+            <Text style={styles.gardeTitle}>Garde en cours</Text>
+            <Text style={styles.gardeGardien}>
+              Chez {garde.users?.nom} · jusqu'au{' '}
+              {new Date(garde.date_fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
             </Text>
-            <Badge label="Garde en cours" color="ok" />
           </View>
+          <Badge label="En cours" color="ok" />
+        </View>
+
+        <View style={styles.animauxRow}>
+          {animaux.map(animal => (
+            <View key={animal.id} style={styles.animalItem}>
+              <View style={styles.animalAvatarWrap}>
+                <AnimalAvatar animal={animal} size={64} />
+              </View>
+              <Text style={styles.animalNom} numberOfLines={1}>{animal.nom ?? 'Animal'}</Text>
+              {animal.race ? (
+                <Text style={styles.animalRace} numberOfLines={1}>{animal.race}</Text>
+              ) : null}
+            </View>
+          ))}
         </View>
       </Card>
 
@@ -85,7 +124,7 @@ export default function JournalScreen({ garde, user }) {
       {journaux.length === 0 && (
         <Card>
           <Text style={styles.empty}>Aucun journal envoyé pour l'instant.</Text>
-          <Text style={styles.emptySub}>Le gardien enverra le premier journal aujourd'hui.</Text>
+          <Text style={styles.emptySub}>Le petsitter enverra le premier journal aujourd'hui.</Text>
         </Card>
       )}
 
@@ -99,7 +138,7 @@ export default function JournalScreen({ garde, user }) {
         <Text style={styles.alertIcon}>⚠️</Text>
         <View>
           <Text style={styles.alertTitle}>Signaler un problème</Text>
-          <Text style={styles.alertSub}>Contacter le gardien ou le support</Text>
+          <Text style={styles.alertSub}>Contacter le petsitter ou le support</Text>
         </View>
       </TouchableOpacity>
     </ScrollView>
@@ -108,16 +147,18 @@ export default function JournalScreen({ garde, user }) {
 
 const JournalCard = ({ journal, onValider }) => {
   const photos = journal.photos ?? [];
-  const photoRepas     = photos.find(p => p.type === 'repas');
   const photoPromenade = photos.find(p => p.type === 'promenade');
+  const animalObj = journal.animal ?? null;
 
   return (
     <Card>
       {/* Header */}
       <View style={styles.cardHeader}>
-        <Avatar initials="SM" size={34} />
+        <View style={styles.cardAvatarWrap}>
+          <AnimalAvatar animal={animalObj} size={40} />
+        </View>
         <View style={{ flex: 1, marginLeft: 10 }}>
-          <Text style={styles.cardAnimal}>{journal.animal_nom ?? 'Luna 🐕'}</Text>
+          <Text style={styles.cardAnimal}>{journal.animal_nom ?? animalObj?.nom ?? 'Animal'}</Text>
           <Text style={styles.cardDate}>
             {new Date(journal.date).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
           </Text>
@@ -128,7 +169,7 @@ const JournalCard = ({ journal, onValider }) => {
       {/* Activités */}
       <View style={styles.activiteRow}>
         {[
-          { key: 'repas',     label: 'Repas',     done: journal.repas_done,     heure: journal.repas_heure,     photo: photoRepas },
+          { key: 'repas',     label: 'Repas',     done: journal.repas_done,     heure: journal.repas_heure,     photo: null },
           { key: 'promenade', label: 'Promenade', done: journal.promenade_done, heure: journal.promenade_heure, photo: photoPromenade, duree: journal.promenade_duree },
         ].map(a => (
           <View key={a.key} style={[styles.activiteCard, { backgroundColor: a.done ? COLORS.okBg : COLORS.warnBg, borderColor: a.done ? COLORS.okBorder : COLORS.warnBorder }]}>
@@ -171,11 +212,18 @@ const styles = StyleSheet.create({
   content:   { padding: 16, paddingBottom: 100 },
   center:    { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.sand },
 
-  animalCard: { marginBottom: 14 },
-  animalRow:  { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  animalEmoji:{ fontSize: 44 },
-  animalNom:  { fontSize: 18, ...FONTS.heavy, color: COLORS.ink, marginBottom: 2 },
-  animalGardien: { fontSize: 13, color: COLORS.muted, marginBottom: 6 },
+  animalCard:    { marginBottom: 14 },
+  gardeHeader:   { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 },
+  gardeTitle:    { fontSize: 16, ...FONTS.heavy, color: COLORS.ink, marginBottom: 2 },
+  gardeGardien:  { fontSize: 12, color: COLORS.muted },
+
+  animauxRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  animalItem:    { alignItems: 'center', width: 80 },
+  animalAvatarWrap: { marginBottom: 6, borderRadius: 36, overflow: 'hidden', borderWidth: 2.5, borderColor: COLORS.border },
+  animalNom:     { fontSize: 13, ...FONTS.heavy, color: COLORS.ink, textAlign: 'center' },
+  animalRace:    { fontSize: 11, color: COLORS.muted, textAlign: 'center' },
+
+  cardAvatarWrap: { borderRadius: 22, overflow: 'hidden', borderWidth: 2, borderColor: COLORS.border },
 
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   statCard: {

@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "PawWatch",
+    "slug": "pawwatch",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/logo.png",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0EA5E9"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pawwatch.app"
+    },
+    "android": {
+      "package": "com.pawwatch.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#0EA5E9"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "e16fa974-d754-4523-a2ce-b0f281ef62a0"
+      }
+    },
+    "owner": "looneyt",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/e16fa974-d754-4523-a2ce-b0f281ef62a0"
+    }
+  }
+}
