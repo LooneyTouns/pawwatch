@@ -4,6 +4,7 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, RADIUS } from '../../lib/theme';
 import { Avatar } from '../../components/UI';
 
@@ -82,18 +83,24 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
       keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <View style={cs.header}>
+      <LinearGradient colors={['#7A2D0A', '#D4703A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cs.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={cs.backIcon}>←</Text>
         </TouchableOpacity>
-        <Avatar initials={initials} size={38} />
+        <View style={cs.headerAvatarRing}>
+          <Avatar initials={initials} size={34} />
+        </View>
         <View style={cs.headerInfo}>
           <Text style={cs.headerName}>{conversation?.partnerName}</Text>
           <Text style={cs.headerSub} numberOfLines={1}>
             {conversation?.partnerSpecialite || 'Petsitter'}
           </Text>
         </View>
-      </View>
+        <View style={cs.headerOnline}>
+          <View style={cs.onlineDot} />
+          <Text style={cs.onlineText}>En ligne</Text>
+        </View>
+      </LinearGradient>
 
       {/* Message list */}
       <FlatList
@@ -171,14 +178,17 @@ const cs = StyleSheet.create({
 
   // Header
   header: {
-    backgroundColor: COLORS.bark,
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 14, paddingVertical: 11, gap: 12,
   },
-  backIcon:   { fontSize: 22, color: COLORS.white, ...FONTS.bold, marginRight: 2 },
-  headerInfo: { flex: 1 },
-  headerName: { fontSize: 15, ...FONTS.heavy, color: COLORS.white },
-  headerSub:  { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
+  backIcon:        { fontSize: 22, color: COLORS.white, ...FONTS.bold, marginRight: 2 },
+  headerAvatarRing:{ borderRadius: 22, borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)', overflow: 'hidden' },
+  headerInfo:      { flex: 1 },
+  headerName:      { fontSize: 15, ...FONTS.heavy, color: COLORS.white },
+  headerSub:       { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
+  headerOnline:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  onlineDot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ADE80' },
+  onlineText:      { fontSize: 11, color: 'rgba(255,255,255,0.8)', ...FONTS.medium },
 
   // Date separator
   dateSep: { alignItems: 'center', marginVertical: 14 },
@@ -226,7 +236,8 @@ const cs = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 8, gap: 10,
   },
   input: {
-    flex: 1, backgroundColor: '#F3F4F6',
+    flex: 1, backgroundColor: COLORS.sand,
+    borderWidth: 1.5, borderColor: COLORS.border,
     borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10,
     fontSize: 14, color: COLORS.ink, maxHeight: 120,
   },

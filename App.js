@@ -1,6 +1,7 @@
 // App.js — Point d'entrée PawWatch
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const LEDGER_ICON = require('./assets/ledger-icon.png');
 import { COLORS, FONTS, RADIUS } from './lib/theme';
@@ -19,6 +20,7 @@ import ProfilScreen          from './screens/shared/ProfilScreen';
 import SearchPetsitterScreen from './screens/proprietaire/SearchPetsitterScreen';
 import MessagesScreen        from './screens/shared/MessagesScreen';
 import ChatScreen            from './screens/shared/ChatScreen';
+import OnboardingScreen      from './screens/shared/OnboardingScreen';
 
 // Conversations demo pré-peuplées
 const DEMO_CONVERSATIONS = [
@@ -69,6 +71,7 @@ export default function App() {
   const [journalAnimal,          setJournalAnimal]          = useState(null);
   const [journauxCompletes,      setJournauxCompletes]      = useState([]);
   const [profilPetsitterComplet, setProfilPetsitterComplet] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // ── Messagerie ──
   const [conversations,        setConversations]        = useState(DEMO_CONVERSATIONS);
@@ -90,13 +93,21 @@ export default function App() {
     });
   }, []);
 
-  const handleLogin = (u) => {
+  const handleLogin = (u, isNewUser = false) => {
     setUser(u);
     setRole(u.user_metadata?.role ?? 'proprietaire');
+    if (isNewUser && !u.user_metadata?.isAdmin) {
+      setShowOnboarding(true);
+    }
     // Planifier rappel quotidien si petsitter ou les_deux
     if (u.user_metadata?.role === 'petsitter' || u.user_metadata?.role === 'les_deux') {
       scheduleJournalReminder(u.user_metadata?.nom ?? 'Petsitter').catch(() => {});
     }
+  };
+
+  const handleOnboardingComplete = (answers) => {
+    if (answers?.role) setRole(answers.role);
+    setShowOnboarding(false);
   };
 
   const handleLogout = async () => {
@@ -161,9 +172,17 @@ export default function App() {
     <LoginScreen onLogin={handleLogin} />
   );
 
+  if (showOnboarding) return (
+    <OnboardingScreen
+      user={user}
+      onComplete={handleOnboardingComplete}
+    />
+  );
+
   // Navigation tabs selon rôle
   const msgUnread = conversations.reduce((s, c) => s + (c.unread || 0), 0);
   const msgIcon   = msgUnread > 0 ? '🔴' : '💬';
+
 
   const journalTab = { id: 'journal', image: LEDGER_ICON, label: 'Journal' };
 
@@ -272,37 +291,64 @@ export default function App() {
     }
   };
 
+  const prenom = user?.user_metadata?.nom?.split(' ')[0] ?? '';
+  const msgUnreadTotal = conversations.reduce((s, c) => s + (c.unread || 0), 0);
+
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.bark} />
+      <StatusBar barStyle="light-content" backgroundColor="#7A2D0A" />
       <View style={styles.app}>
 
         {/* ── Header ── */}
-        <View style={styles.header}>
+        <LinearGradient
+          colors={['#7A2D0A', '#D4703A']}
+          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+          style={styles.header}
+        >
           <View style={styles.headerLeft}>
-            <PawIcon />
-            <Text style={styles.headerTitle}>PawWatch</Text>
+            <Image source={LEDGER_ICON} style={styles.headerLogo} />
+            <View>
+              {prenom ? <Text style={styles.headerGreet}>Bonjour, {prenom} 👋</Text> : null}
+              <Text style={styles.headerTitle}>PawWatch</Text>
+            </View>
           </View>
 
-          {/* Toggle Proprio / Petsitter / Les deux */}
-          <View style={styles.roleToggle}>
-            {[
-              { id: 'proprietaire', label: '🏠 Proprio'  },
-              { id: 'petsitter',    label: '🤝 Sitter'   },
-              { id: 'les_deux',     label: '🌟 Les deux' },
-            ].map(r => (
-              <TouchableOpacity
-                key={r.id}
-                onPress={() => { setRole(r.id); setActiveTab('journal'); }}
-                style={[styles.roleBtn, role === r.id && styles.roleBtnActive]}
-              >
-                <Text style={[styles.roleBtnText, role === r.id && styles.roleBtnTextActive]}>{r.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+          <View style={styles.headerRight}>
+            {/* Cloche notifications */}
+            <TouchableOpacity
+              style={styles.headerBell}
+              onPress={() => setActiveTab('notifs')}
+            >
+              <Text style={styles.headerBellIcon}>🔔</Text>
+              {msgUnreadTotal > 0 && (
+                <View style={styles.headerBadge}>
+                  <Text style={styles.headerBadgeText}>{msgUnreadTotal}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
 
-        {/* Bandeau profil incomplet (petsitter / les_deux) */}
+            {/* Toggle rôle admin uniquement */}
+            {user?.user_metadata?.isAdmin && (
+              <View style={styles.roleToggle}>
+                {[
+                  { id: 'proprietaire', label: '🏠' },
+                  { id: 'petsitter',    label: '🤝' },
+                  { id: 'les_deux',     label: '🌟' },
+                ].map(r => (
+                  <TouchableOpacity
+                    key={r.id}
+                    onPress={() => { setRole(r.id); setActiveTab('journal'); }}
+                    style={[styles.roleBtn, role === r.id && styles.roleBtnActive]}
+                  >
+                    <Text style={styles.roleBtnText}>{r.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+        </LinearGradient>
+
+        {/* Bandeau profil incomplet */}
         {isPetsitterRole && !profilPetsitterComplet && (
           <TouchableOpacity
             style={styles.profilGate}
@@ -324,23 +370,25 @@ export default function App() {
 
         {/* ── Bottom Nav ── */}
         <View style={styles.bottomNav}>
-          {tabs.map(tab => (
-            <TouchableOpacity
-              key={tab.id}
-              onPress={() => setActiveTab(tab.id)}
-              style={styles.navItem}
-              activeOpacity={0.7}
-            >
-              {tab.image
-                ? <Image source={tab.image} style={[styles.navIconImg, activeTab === tab.id && styles.navIconImgActive]} />
-                : <Text style={styles.navIcon}>{tab.icon}</Text>
-              }
-              <Text style={[styles.navLabel, activeTab === tab.id && styles.navLabelActive]}>
-                {tab.label}
-              </Text>
-              {activeTab === tab.id && <View style={styles.navDot} />}
-            </TouchableOpacity>
-          ))}
+          {tabs.map(tab => {
+            const isActive = activeTab === tab.id;
+            return (
+              <TouchableOpacity
+                key={tab.id}
+                onPress={() => setActiveTab(tab.id)}
+                style={[styles.navItem, isActive && styles.navItemActive]}
+                activeOpacity={0.8}
+              >
+                {tab.image
+                  ? <Image source={tab.image} style={[styles.navIconImg, isActive && styles.navIconImgActive]} />
+                  : <Text style={[styles.navIcon, isActive && styles.navIconActive]}>{tab.icon}</Text>
+                }
+                <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
     </>
@@ -356,19 +404,30 @@ const styles = StyleSheet.create({
   splashTitle: { fontSize: 36, ...FONTS.heavy, color: COLORS.white, marginTop: 16 },
 
   header: {
-    backgroundColor: COLORS.bark,
-    paddingTop: Platform.OS === 'ios' ? 50 : StatusBar.currentHeight + 8,
-    paddingBottom: 14, paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight ?? 24) + 10,
+    paddingBottom: 16, paddingHorizontal: 18,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
-  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  headerTitle: { color: COLORS.white, fontSize: 20, ...FONTS.heavy },
+  headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerLogo:  { width: 32, height: 32, resizeMode: 'contain' },
+  headerGreet: { fontSize: 11, color: 'rgba(255,255,255,0.75)', ...FONTS.medium },
+  headerTitle: { color: COLORS.white, fontSize: 18, ...FONTS.heavy, letterSpacing: 0.3 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerBell:  { position: 'relative', padding: 4 },
+  headerBellIcon: { fontSize: 20 },
+  headerBadge: {
+    position: 'absolute', top: 0, right: 0,
+    width: 16, height: 16, borderRadius: 8,
+    backgroundColor: '#FF3B30',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerBadgeText: { fontSize: 9, color: '#fff', ...FONTS.bold },
 
-  roleToggle: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.sm, padding: 3, gap: 2 },
-  roleBtn:    { paddingHorizontal: 7, paddingVertical: 6, borderRadius: RADIUS.sm - 2 },
-  roleBtnActive:     { backgroundColor: COLORS.white },
-  roleBtnText:       { fontSize: 10, ...FONTS.bold, color: COLORS.white },
-  roleBtnTextActive: { color: COLORS.bark },
+  roleToggle: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: RADIUS.sm, padding: 2, gap: 1 },
+  roleBtn:    { paddingHorizontal: 8, paddingVertical: 5, borderRadius: RADIUS.sm - 2 },
+  roleBtnActive:     { backgroundColor: 'rgba(255,255,255,0.25)' },
+  roleBtnText:       { fontSize: 14, color: COLORS.white },
+  roleBtnTextActive: { color: COLORS.white },
 
   screen: { flex: 1 },
 
@@ -385,15 +444,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: COLORS.cream,
     borderTopWidth: 1, borderTopColor: COLORS.border,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 28 : 10,
+    paddingTop: 8,
+    paddingHorizontal: 6,
+    gap: 4,
   },
-  navItem:  { flex: 1, alignItems: 'center', gap: 2 },
-  navIcon:  { fontSize: 22 },
-  navIconImg:       { width: 24, height: 24, resizeMode: 'contain', opacity: 0.45 },
+  navItem: {
+    flex: 1, alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 7, paddingHorizontal: 4,
+    borderRadius: 14, gap: 3,
+  },
+  navItemActive: {
+    backgroundColor: COLORS.warm,
+  },
+  navIcon:       { fontSize: 20, opacity: 0.4 },
+  navIconActive: { opacity: 1 },
+  navIconImg:       { width: 22, height: 22, resizeMode: 'contain', opacity: 0.4 },
   navIconImgActive: { opacity: 1 },
-  navLabel: { fontSize: 10, ...FONTS.medium, color: COLORS.muted },
-  navLabelActive: { color: COLORS.bark, ...FONTS.bold },
-  navDot:   { width: 18, height: 3, borderRadius: 3, backgroundColor: COLORS.clay, marginTop: 2 },
+  navLabel:       { fontSize: 10, ...FONTS.medium, color: COLORS.muted },
+  navLabelActive: { color: COLORS.clay, ...FONTS.bold },
 
 });

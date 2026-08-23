@@ -44,20 +44,16 @@ export default function NotificationsScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header section */}
-      <View style={styles.topBar}>
-        <View>
-          <Text style={styles.topTitle}>Notifications</Text>
-          {nonLues > 0 && (
-            <Text style={styles.topSub}>{nonLues} non lue{nonLues > 1 ? 's' : ''}</Text>
-          )}
-        </View>
-        {nonLues > 0 && (
+      {nonLues > 0 && (
+        <View style={styles.topBar}>
+          <View style={styles.countPill}>
+            <Text style={styles.topSub}>🔔 {nonLues} non lue{nonLues > 1 ? 's' : ''}</Text>
+          </View>
           <TouchableOpacity onPress={marquerToutLu} activeOpacity={0.7}>
             <Text style={styles.toutLuBtn}>Tout marquer lu</Text>
           </TouchableOpacity>
-        )}
-      </View>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.list}>
         {notifs.length === 0 && (
@@ -101,13 +97,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.sand },
 
   topBar: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
-    paddingHorizontal: 16, paddingTop: 20, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.cream,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4,
   },
-  topTitle: { fontSize: 20, ...FONTS.heavy, color: COLORS.ink },
-  topSub:   { fontSize: 13, color: COLORS.clay, ...FONTS.medium, marginTop: 2 },
+  countPill: {
+    backgroundColor: COLORS.warm, borderRadius: RADIUS.full,
+    paddingHorizontal: 14, paddingVertical: 6,
+  },
+  topSub:   { fontSize: 12, color: COLORS.bark, ...FONTS.bold },
   toutLuBtn:{ fontSize: 13, color: COLORS.bark, ...FONTS.bold },
 
   list: { padding: 16, paddingBottom: 100 },

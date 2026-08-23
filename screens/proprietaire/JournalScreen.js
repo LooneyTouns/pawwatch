@@ -111,7 +111,7 @@ export default function JournalScreen({ garde, user }) {
           { label: 'Promenades', val: `${journaux.filter(j=>j.promenade_done).length}/${journaux.length}`, ok: journaux.every(j=>j.promenade_done), icon: '🌳' },
           { label: 'Complets',   val: `${jours_complets}/${journaux.length}`,                               ok: jours_complets === journaux.length,  icon: '📋' },
         ].map(s => (
-          <View key={s.label} style={[styles.statCard, { borderColor: s.ok ? COLORS.okBorder : COLORS.warnBorder }]}>
+          <View key={s.label} style={[styles.statCard, { borderColor: s.ok ? COLORS.okBorder : COLORS.warnBorder, backgroundColor: s.ok ? COLORS.okBg : COLORS.warnBg }]}>
             <Text style={styles.statIcon}>{s.icon}</Text>
             <Text style={[styles.statVal, { color: s.ok ? COLORS.moss : COLORS.clay }]}>{s.val}</Text>
             <Text style={styles.statLabel}>{s.label}</Text>
@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
 
   animauxRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   animalItem:    { alignItems: 'center', width: 80 },
-  animalAvatarWrap: { marginBottom: 6, borderRadius: 36, overflow: 'hidden', borderWidth: 2.5, borderColor: COLORS.border },
+  animalAvatarWrap: { marginBottom: 6, borderRadius: 36, overflow: 'hidden', borderWidth: 2.5, borderColor: COLORS.bark },
   animalNom:     { fontSize: 13, ...FONTS.heavy, color: COLORS.ink, textAlign: 'center' },
   animalRace:    { fontSize: 11, color: COLORS.muted, textAlign: 'center' },
 
@@ -227,8 +227,8 @@ const styles = StyleSheet.create({
 
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   statCard: {
-    flex: 1, backgroundColor: COLORS.cream, borderRadius: RADIUS.md,
-    padding: 12, alignItems: 'center', borderWidth: 1,
+    flex: 1, borderRadius: RADIUS.md,
+    padding: 12, alignItems: 'center', borderWidth: 1.5,
     ...SHADOW.card,
   },
   statIcon:  { fontSize: 20 },

@@ -20,9 +20,6 @@ export default function MessagesScreen({ conversations = [], onOpenChat }) {
   if (conversations.length === 0) {
     return (
       <View style={ms.wrapper}>
-        <View style={ms.header}>
-          <Text style={ms.headerTitle}>💬 Messages</Text>
-        </View>
         <View style={ms.empty}>
           <Text style={ms.emptyEmoji}>💬</Text>
           <Text style={ms.emptyTitle}>Aucune conversation</Text>
@@ -36,27 +33,25 @@ export default function MessagesScreen({ conversations = [], onOpenChat }) {
 
   return (
     <View style={ms.wrapper}>
-      <View style={ms.header}>
-        <Text style={ms.headerTitle}>💬 Messages</Text>
-        {totalUnread > 0 && (
-          <View style={ms.badge}>
-            <Text style={ms.badgeText}>{totalUnread}</Text>
-          </View>
-        )}
-      </View>
+      {totalUnread > 0 && (
+        <View style={ms.countBar}>
+          <Text style={ms.countText}>{totalUnread} message{totalUnread > 1 ? 's' : ''} non lu{totalUnread > 1 ? 's' : ''}</Text>
+        </View>
+      )}
 
       <FlatList
         data={conversations}
         keyExtractor={c => c.id}
-        contentContainerStyle={{ paddingVertical: 6 }}
+        contentContainerStyle={ms.list}
         renderItem={({ item }) => {
           const last = item.messages[item.messages.length - 1];
           const preview = last
             ? (last.from === 'me' ? 'Vous : ' : '') + last.text
             : '• Nouvelle conversation';
+          const hasUnread = item.unread > 0;
           return (
             <TouchableOpacity
-              style={ms.row}
+              style={[ms.row, hasUnread && ms.rowUnread]}
               onPress={() => onOpenChat(item)}
               activeOpacity={0.72}
             >
@@ -65,11 +60,11 @@ export default function MessagesScreen({ conversations = [], onOpenChat }) {
                   initials={(item.partnerName || 'XX').slice(0, 2).toUpperCase()}
                   size={52}
                 />
-                {item.unread > 0 && <View style={ms.dot} />}
+                {hasUnread && <View style={ms.dot} />}
               </View>
               <View style={ms.rowInfo}>
                 <View style={ms.rowTop}>
-                  <Text style={ms.rowName}>{item.partnerName}</Text>
+                  <Text style={[ms.rowName, hasUnread && ms.rowNameBold]}>{item.partnerName}</Text>
                   {last && <Text style={ms.rowTime}>{formatTime(last.timestamp)}</Text>}
                 </View>
                 {item.partnerSpecialite && (
@@ -77,12 +72,12 @@ export default function MessagesScreen({ conversations = [], onOpenChat }) {
                 )}
                 <View style={ms.rowBottom}>
                   <Text
-                    style={[ms.rowPreview, item.unread > 0 && ms.rowPreviewBold]}
+                    style={[ms.rowPreview, hasUnread && ms.rowPreviewBold]}
                     numberOfLines={1}
                   >
                     {preview}
                   </Text>
-                  {item.unread > 0 && (
+                  {hasUnread && (
                     <View style={ms.unreadBadge}>
                       <Text style={ms.unreadText}>{item.unread}</Text>
                     </View>
@@ -101,18 +96,15 @@ export default function MessagesScreen({ conversations = [], onOpenChat }) {
 const ms = StyleSheet.create({
   wrapper: { flex: 1, backgroundColor: COLORS.sand },
 
-  header: {
-    backgroundColor: COLORS.bark,
-    paddingHorizontal: 20, paddingVertical: 16,
-    flexDirection: 'row', alignItems: 'center', gap: 10,
+  countBar: {
+    marginHorizontal: 16, marginTop: 12,
+    backgroundColor: COLORS.warm, borderRadius: RADIUS.full,
+    paddingHorizontal: 14, paddingVertical: 6,
+    alignSelf: 'flex-start',
   },
-  headerTitle: { fontSize: 20, ...FONTS.heavy, color: COLORS.white, flex: 1 },
-  badge: {
-    backgroundColor: COLORS.clay, borderRadius: RADIUS.full,
-    minWidth: 22, height: 22,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6,
-  },
-  badgeText: { fontSize: 12, ...FONTS.bold, color: COLORS.white },
+  countText: { fontSize: 12, ...FONTS.bold, color: COLORS.bark },
+
+  list: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 100 },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
   emptyEmoji: { fontSize: 56, marginBottom: 16 },
@@ -122,7 +114,13 @@ const ms = StyleSheet.create({
   row: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.white,
-    paddingHorizontal: 16, paddingVertical: 13, gap: 14,
+    paddingHorizontal: 14, paddingVertical: 14, gap: 14,
+    borderRadius: RADIUS.lg, marginBottom: 8,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  rowUnread: {
+    borderColor: COLORS.bark,
+    backgroundColor: COLORS.cream,
   },
   avatarWrap: { position: 'relative' },
   dot: {
@@ -130,13 +128,14 @@ const ms = StyleSheet.create({
     width: 13, height: 13, borderRadius: 7,
     backgroundColor: COLORS.bark, borderWidth: 2, borderColor: COLORS.white,
   },
-  rowInfo:    { flex: 1 },
-  rowTop:     { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rowName:    { fontSize: 15, ...FONTS.heavy, color: COLORS.ink },
-  rowTime:    { fontSize: 11, color: COLORS.muted },
-  rowSpec:    { fontSize: 11, color: COLORS.bark, ...FONTS.medium, marginTop: 2 },
-  rowBottom:  { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
-  rowPreview: { flex: 1, fontSize: 13, color: COLORS.muted, ...FONTS.medium },
+  rowInfo:        { flex: 1 },
+  rowTop:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  rowName:        { fontSize: 15, ...FONTS.bold, color: COLORS.ink },
+  rowNameBold:    { ...FONTS.heavy },
+  rowTime:        { fontSize: 11, color: COLORS.muted },
+  rowSpec:        { fontSize: 11, color: COLORS.bark, ...FONTS.medium, marginTop: 2 },
+  rowBottom:      { flexDirection: 'row', alignItems: 'center', marginTop: 3 },
+  rowPreview:     { flex: 1, fontSize: 13, color: COLORS.muted, ...FONTS.medium },
   rowPreviewBold: { ...FONTS.bold, color: COLORS.ink },
   unreadBadge: {
     backgroundColor: COLORS.bark, borderRadius: RADIUS.full,
@@ -145,5 +144,5 @@ const ms = StyleSheet.create({
     paddingHorizontal: 5, marginLeft: 8,
   },
   unreadText: { fontSize: 11, ...FONTS.bold, color: COLORS.white },
-  sep: { height: 1, backgroundColor: COLORS.border, marginLeft: 82 },
+  sep: { height: 0 },
 });

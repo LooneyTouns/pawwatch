@@ -115,7 +115,9 @@ export default function DemandesScreen() {
                 {d.animal.emoji} {d.animal.nom} · {d.animal.race ?? d.animal.espece} · {d.animal.age}
               </Text>
             </View>
-            <Text style={styles.montant}>{d.montant} €</Text>
+            <View style={styles.montantPill}>
+              <Text style={styles.montant}>{d.montant} €</Text>
+            </View>
           </View>
 
           {/* Dates */}
@@ -195,7 +197,8 @@ const styles = StyleSheet.create({
   demandeHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
   propreNom:     { fontSize: 15, ...FONTS.bold, color: COLORS.ink, marginBottom: 3 },
   animalLine:    { fontSize: 13, color: COLORS.muted },
-  montant:       { fontSize: 20, ...FONTS.heavy, color: COLORS.bark },
+  montantPill:   { backgroundColor: COLORS.warm, borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1.5, borderColor: COLORS.bark },
+  montant:       { fontSize: 16, ...FONTS.heavy, color: COLORS.bark },
 
   datesBox:  { flexDirection: 'row', backgroundColor: COLORS.sand, borderRadius: RADIUS.sm, padding: 12, marginBottom: 12 },
   dateItem:  { flex: 1, alignItems: 'center' },

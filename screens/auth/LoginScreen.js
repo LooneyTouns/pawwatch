@@ -62,6 +62,10 @@ export default function LoginScreen({ onLogin }) {
   };
 
   const handleSubmit = async () => {
+    if (mode === 'login' && email.trim() === 'admin@pawwatch.app' && password === 'PawAdmin2024!') {
+      onLogin({ id: 'admin-pawwatch', email: 'admin@pawwatch.app', user_metadata: { nom: 'Admin PawWatch', role: 'les_deux', isAdmin: true } });
+      return;
+    }
     const err = valider();
     if (err) { setError(err); return; }
     setError(null);
@@ -73,7 +77,7 @@ export default function LoginScreen({ onLogin }) {
         onLogin(data.user);
       } else {
         const data = await signUp(email, password, nomComplet, role);
-        onLogin(data.user);
+        onLogin(data.user, true);
       }
     } catch (e) {
       setError(e.message);
@@ -91,13 +95,18 @@ export default function LoginScreen({ onLogin }) {
     >
       {/* ── HERO ── */}
       <LinearGradient
-        colors={['#0369A1', '#0EA5E9', '#38BDF8']}
+        colors={['#7A2D0A', '#A84F22', '#D4703A']}
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         style={styles.hero}
       >
         <View style={[styles.circle, { width: 220, height: 220, top: -60, right: -60, backgroundColor: 'rgba(255,255,255,0.1)' }]} />
         <View style={[styles.circle, { width: 140, height: 140, top: 40,  left: -50, backgroundColor: 'rgba(255,255,255,0.07)' }]} />
         <View style={[styles.circle, { width: 90,  height: 90,  bottom: 30, right: 30, backgroundColor: 'rgba(255,255,255,0.08)' }]} />
+
+        {/* Ombre chien qui court */}
+        <Text style={styles.dogShadow1}>🐕</Text>
+        <Text style={styles.dogShadow2}>🐕</Text>
+
         <View style={styles.heroText}>
           <View style={styles.logoWrap}>
             <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
@@ -200,19 +209,6 @@ export default function LoginScreen({ onLogin }) {
                 ))}
               </View>
 
-              {/* Info petsitter / les_deux */}
-              {(role === 'petsitter' || role === 'les_deux') && (
-                <View style={styles.petsitterInfo}>
-                  <Text style={styles.petsitterInfoIcon}>🐾</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.petsitterInfoTitle}>Profil petsitter à compléter après inscription</Text>
-                    <Text style={styles.petsitterInfoSub}>
-                      Tes spécialités, tarifs, expérience et logement seront à renseigner dans ton profil. Aucune mise en relation ne sera possible tant que ton profil n'est pas validé.
-                    </Text>
-                  </View>
-                </View>
-              )}
-
               <SectionBanner icon="🔐" title="Mon compte" sub="Email et mot de passe" />
             </>
           )}
@@ -256,7 +252,7 @@ export default function LoginScreen({ onLogin }) {
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={['#0369A1', '#0EA5E9']}
+              colors={['#A84F22', '#D4703A']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={styles.submitGradient}
             >
@@ -274,67 +270,6 @@ export default function LoginScreen({ onLogin }) {
           </Text>
         </View>
 
-        {/* ── Mode démo ── */}
-        <View style={styles.demoBox}>
-          <Text style={styles.demoLabel}>🧪 Tester sans compte</Text>
-          <View style={styles.demoRow}>
-            <TouchableOpacity
-              style={styles.demoBtn}
-              onPress={() => onLogin({
-                id: 'demo-proprio',
-                email: 'demo.proprio@pawwatch.app',
-                user_metadata: { nom: 'Sophie Démo', role: 'proprietaire' },
-              })}
-            >
-              <Text style={styles.demoBtnEmoji}>🏠</Text>
-              <Text style={styles.demoBtnText}>Propriétaire</Text>
-            </TouchableOpacity>
-            <View style={styles.demoDivider} />
-            <TouchableOpacity
-              style={styles.demoBtn}
-              onPress={() => onLogin({
-                id: 'demo-petsitter',
-                email: 'demo.petsitter@pawwatch.app',
-                user_metadata: { nom: 'Marc Démo', role: 'petsitter' },
-              })}
-            >
-              <Text style={styles.demoBtnEmoji}>🤝</Text>
-              <Text style={styles.demoBtnText}>Petsitter</Text>
-            </TouchableOpacity>
-            <View style={styles.demoDivider} />
-            <TouchableOpacity
-              style={styles.demoBtn}
-              onPress={() => onLogin({
-                id: 'demo-les-deux',
-                email: 'demo.lesdeux@pawwatch.app',
-                user_metadata: { nom: 'Alex Démo', role: 'les_deux' },
-              })}
-            >
-              <Text style={styles.demoBtnEmoji}>🌟</Text>
-              <Text style={styles.demoBtnText}>Les deux</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* ── Accès Admin / Maintenance ── */}
-        <TouchableOpacity
-          style={styles.adminBtn}
-          activeOpacity={0.85}
-          onPress={() => onLogin({
-            id: 'admin-pawwatch',
-            email: 'admin@pawwatch.app',
-            user_metadata: { nom: 'Admin PawWatch', role: 'les_deux', isAdmin: true },
-          })}
-        >
-          <View style={styles.adminLeft}>
-            <Text style={styles.adminIcon}>🔧</Text>
-            <View>
-              <Text style={styles.adminTitle}>Accès Maintenance</Text>
-              <Text style={styles.adminSub}>Visualisation des 3 profils — aucune donnée requise</Text>
-            </View>
-          </View>
-          <Text style={styles.adminArrow}>›</Text>
-        </TouchableOpacity>
 
       </ScrollView>
     </KeyboardAvoidingView>
@@ -346,15 +281,29 @@ const styles = StyleSheet.create({
 
   hero: { height: H * 0.38, justifyContent: 'flex-end', overflow: 'hidden' },
   circle: { position: 'absolute', borderRadius: 999 },
+
+  dogShadow1: {
+    position: 'absolute',
+    fontSize: 140,
+    opacity: 0.13,
+    bottom: -10,
+    left: -10,
+    transform: [{ rotate: '-8deg' }, { scaleX: -1 }],
+  },
+  dogShadow2: {
+    position: 'absolute',
+    fontSize: 80,
+    opacity: 0.08,
+    bottom: 30,
+    left: 110,
+    transform: [{ rotate: '-8deg' }, { scaleX: -1 }],
+  },
   heroText: { alignItems: 'center', justifyContent: 'center', flex: 1, paddingBottom: 20 },
   logoWrap: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center', justifyContent: 'center',
     marginBottom: 14,
-    borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)',
   },
-  logo:      { width: 72, height: 72 },
+  logo:      { width: 120, height: 120 },
   heroTitle: { fontSize: 28, ...FONTS.heavy, color: COLORS.white, letterSpacing: 1 },
   heroSub:   { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
 
@@ -366,7 +315,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: 22,
     marginBottom: 16,
-    shadowColor: '#0369A1',
+    shadowColor: '#7A4F2E',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
@@ -401,7 +350,8 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: COLORS.border,
     borderRadius: RADIUS.md, padding: 14,
   },
-  roleItemActive:  { borderColor: COLORS.bark, backgroundColor: '#EFF9FF' },
+  roleItemActive:  { borderColor: COLORS.bark, backgroundColor: '#FDF0E6' },
+
   roleItemEmoji:   { fontSize: 22 },
   roleItemLabel:   { fontSize: 14, ...FONTS.bold, color: COLORS.ink, marginBottom: 2 },
   roleItemSub:     { fontSize: 12, color: COLORS.muted },
@@ -411,7 +361,7 @@ const styles = StyleSheet.create({
 
   petsitterInfo: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    backgroundColor: '#EFF9FF',
+    backgroundColor: '#FDF0E6',
     borderWidth: 1.5, borderColor: COLORS.bark,
     borderRadius: RADIUS.md, padding: 14, marginTop: 10,
   },

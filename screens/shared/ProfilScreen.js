@@ -4,6 +4,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, TextInput, Alert, Switch, Image,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
 import { supabase } from '../../lib/supabase';
 import { Card, Avatar, SectionLabel, PhotoUpload, AnimalEditor, PriceInput } from '../../components/UI';
@@ -217,16 +218,32 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
         {activeTab === 'profil' && (
           <>
             {/* Hero */}
-            <View style={ps.heroSection}>
-              <View style={ps.avatarWrap}>
+            <LinearGradient
+              colors={['#7A2D0A', '#D4703A']}
+              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              style={ps.heroSection}
+            >
+              <View style={ps.heroAvatarRing}>
                 <Avatar initials={initiales} size={72} />
-                <View style={[ps.rolePill, { backgroundColor: rolePillColor.bg }]}>
-                  <Text style={[ps.rolePillText, { color: rolePillColor.text }]}>{labelRole}</Text>
-                </View>
               </View>
               <Text style={ps.heroNom}>{nom}</Text>
               <Text style={ps.heroEmail}>{email}</Text>
-            </View>
+              <View style={ps.heroRolePill}>
+                <Text style={ps.heroRolePillText}>{labelRole}</Text>
+              </View>
+              <View style={ps.heroStatsRow}>
+                {[
+                  { val: '0', label: 'Gardes' },
+                  { val: '⭐ —', label: 'Évaluation' },
+                  { val: String(mesAnimaux.length), label: 'Animaux' },
+                ].map((s, i) => (
+                  <View key={s.label} style={[ps.heroStat, i < 2 && ps.heroStatBorder]}>
+                    <Text style={ps.heroStatVal}>{s.val}</Text>
+                    <Text style={ps.heroStatLabel}>{s.label}</Text>
+                  </View>
+                ))}
+              </View>
+            </LinearGradient>
 
             {/* Infos compte */}
             <SectionLabel label="Mon compte" />
@@ -704,25 +721,36 @@ const ps = StyleSheet.create({
 
   // ── Tabs ──
   tabBar: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.cream,
+    flexDirection: 'row', gap: 6,
+    backgroundColor: COLORS.sand,
+    paddingHorizontal: 14, paddingVertical: 10,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   tabBtn: {
-    flex: 1, paddingVertical: 13, alignItems: 'center',
-    borderBottomWidth: 2, borderBottomColor: 'transparent',
+    flex: 1, paddingVertical: 8, alignItems: 'center',
+    borderRadius: RADIUS.full,
   },
-  tabBtnActive:    { borderBottomColor: COLORS.bark },
+  tabBtnActive:    { backgroundColor: COLORS.bark },
   tabBtnText:      { fontSize: 13, ...FONTS.medium, color: COLORS.muted },
-  tabBtnTextActive:{ fontSize: 13, ...FONTS.bold, color: COLORS.bark },
+  tabBtnTextActive:{ fontSize: 13, ...FONTS.bold, color: COLORS.white },
 
   // ── Hero ──
-  heroSection: { alignItems: 'center', paddingVertical: 28 },
-  avatarWrap:  { alignItems: 'center', marginBottom: 14 },
-  rolePill:    { marginTop: 8, borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 4 },
-  rolePillText:{ fontSize: 12, ...FONTS.bold },
-  heroNom:     { fontSize: 22, ...FONTS.heavy, color: COLORS.ink, marginBottom: 4 },
-  heroEmail:   { fontSize: 14, color: COLORS.muted },
+  heroSection: { alignItems: 'center', paddingTop: 24, paddingBottom: 0, paddingHorizontal: 20 },
+  heroAvatarRing: {
+    width: 84, height: 84, borderRadius: 42,
+    borderWidth: 3, borderColor: 'rgba(255,255,255,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12, overflow: 'hidden',
+  },
+  heroNom:       { fontSize: 22, ...FONTS.heavy, color: COLORS.white, marginBottom: 3 },
+  heroEmail:     { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 12 },
+  heroRolePill:  { backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: RADIUS.full, paddingHorizontal: 16, paddingVertical: 5, marginBottom: 20 },
+  heroRolePillText: { fontSize: 12, ...FONTS.bold, color: COLORS.white },
+  heroStatsRow:  { flexDirection: 'row', width: '100%', backgroundColor: 'rgba(0,0,0,0.15)', borderRadius: RADIUS.md, marginBottom: 0 },
+  heroStat:      { flex: 1, alignItems: 'center', paddingVertical: 14 },
+  heroStatBorder:{ borderRightWidth: 1, borderRightColor: 'rgba(255,255,255,0.2)' },
+  heroStatVal:   { fontSize: 18, ...FONTS.heavy, color: COLORS.white },
+  heroStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.65)', ...FONTS.medium, marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.4 },
 
   // ── Compte ──
   infoCard:      { marginBottom: 14 },
