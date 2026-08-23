@@ -1,7 +1,6 @@
 // App.js — Point d'entrée PawWatch
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const LEDGER_ICON = require('./assets/ledger-icon.png');
 const APP_LOGO    = require('./assets/logo.png');
@@ -278,15 +277,11 @@ export default function App() {
 
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor="#1A2756" />
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       <View style={styles.app}>
 
         {/* ── Header ── */}
-        <LinearGradient
-          colors={['#1A2756', '#E8922A']}
-          start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-          style={styles.header}
-        >
+        <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" />
             <Text style={styles.headerGreet}>
@@ -326,7 +321,7 @@ export default function App() {
               </View>
             )}
           </View>
-        </LinearGradient>
+        </View>
 
         {/* Bandeau profil incomplet */}
         {isPetsitterRole && !profilPetsitterComplet && (
@@ -387,11 +382,13 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight ?? 24) + 10,
     paddingBottom: 16, paddingHorizontal: 18,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.white,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
   },
   headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerLogo:  { width: 40, height: 40 },
-  headerGreet: { fontSize: 17, color: COLORS.white, ...FONTS.heavy },
-  headerTitle: { color: COLORS.white, fontSize: 16, ...FONTS.heavy, letterSpacing: 0.3 },
+  headerGreet: { fontSize: 17, color: COLORS.ink, ...FONTS.heavy },
+  headerTitle: { color: COLORS.ink, fontSize: 16, ...FONTS.heavy, letterSpacing: 0.3 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerBell:  { position: 'relative', padding: 4 },
   headerBellIcon: { fontSize: 20 },
@@ -403,10 +400,10 @@ const styles = StyleSheet.create({
   },
   headerBadgeText: { fontSize: 9, color: '#fff', ...FONTS.bold },
 
-  roleToggle: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: RADIUS.sm, padding: 2, gap: 1 },
+  roleToggle: { flexDirection: 'row', backgroundColor: COLORS.border, borderRadius: RADIUS.sm, padding: 2, gap: 1 },
   roleBtn:    { paddingHorizontal: 8, paddingVertical: 5, borderRadius: RADIUS.sm - 2 },
-  roleBtnActive:     { backgroundColor: 'rgba(255,255,255,0.25)' },
-  roleBtnText:       { fontSize: 14, color: COLORS.white },
+  roleBtnActive:     { backgroundColor: COLORS.bark },
+  roleBtnText:       { fontSize: 14, color: COLORS.ink },
   roleBtnTextActive: { color: COLORS.white },
 
   screen: { flex: 1 },
