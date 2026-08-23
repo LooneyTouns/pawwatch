@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image } from 'react-native';
 
 const LEDGER_ICON = require('./assets/ledger-icon.png');
+const MSG_ICON    = require('./assets/msg.png');
 const APP_LOGO    = require('./assets/logo.png');
 import { COLORS, FONTS, RADIUS } from './lib/theme';
 import { getUser, signOut }       from './lib/supabase';
@@ -181,22 +182,21 @@ export default function App() {
 
   // Navigation tabs selon rôle
   const msgUnread = conversations.reduce((s, c) => s + (c.unread || 0), 0);
-  const msgIcon   = msgUnread > 0 ? '🔴' : '💬';
-
 
   const journalTab = { id: 'journal', image: LEDGER_ICON, label: 'Journal' };
+  const messagesTab = { id: 'messages', image: MSG_ICON, label: 'Messages', badge: msgUnread > 0 ? msgUnread : null };
 
   const tabs = role === 'proprietaire'
     ? [
         journalTab,
         { id: 'chercher', icon: '🔍', label: 'Chercher' },
-        { id: 'messages', icon: msgIcon, label: 'Messages' },
+        messagesTab,
         { id: 'notifs',   icon: '🔔', label: 'Notifs'   },
         { id: 'profil',   icon: '👤', label: 'Profil'   },
       ]
     : [
         journalTab,
-        { id: 'messages', icon: msgIcon, label: 'Messages' },
+        messagesTab,
         { id: 'demandes', icon: '📨', label: 'Demandes' },
         { id: 'notifs',   icon: '🔔', label: 'Notifs'   },
         { id: 'profil',   icon: '👤', label: 'Profil'   },
@@ -354,10 +354,17 @@ export default function App() {
                 style={[styles.navItem, isActive && styles.navItemActive]}
                 activeOpacity={0.8}
               >
-                {tab.image
-                  ? <Image source={tab.image} style={[styles.navIconImg, isActive && styles.navIconImgActive]} />
-                  : <Text style={[styles.navIcon, isActive && styles.navIconActive]}>{tab.icon}</Text>
-                }
+                <View style={{ position: 'relative' }}>
+                  {tab.image
+                    ? <Image source={tab.image} style={[styles.navIconImg, isActive && styles.navIconImgActive]} />
+                    : <Text style={[styles.navIcon, isActive && styles.navIconActive]}>{tab.icon}</Text>
+                  }
+                  {tab.badge > 0 && (
+                    <View style={styles.navBadge}>
+                      <Text style={styles.navBadgeText}>{tab.badge}</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
                   {tab.label}
                 </Text>
@@ -438,6 +445,13 @@ const styles = StyleSheet.create({
   navIconActive: { opacity: 1 },
   navIconImg:       { width: 22, height: 22, resizeMode: 'contain', opacity: 0.4 },
   navIconImgActive: { opacity: 1 },
+  navBadge: {
+    position: 'absolute', top: -4, right: -6,
+    minWidth: 16, height: 16, borderRadius: 8,
+    backgroundColor: '#FF3B30', paddingHorizontal: 3,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  navBadgeText: { fontSize: 9, color: '#fff', ...FONTS.bold },
   navLabel:       { fontSize: 10, ...FONTS.medium, color: COLORS.muted },
   navLabelActive: { color: COLORS.clay, ...FONTS.bold },
 
