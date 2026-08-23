@@ -94,14 +94,10 @@ export default function LoginScreen({ onLogin }) {
       style={styles.root}
     >
       {/* ── HERO ── */}
-      <LinearGradient
-        colors={['#1A2756', '#C4741A', '#E8922A']}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={styles.hero}
-      >
-        <View style={[styles.circle, { width: 220, height: 220, top: -60, right: -60, backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-        <View style={[styles.circle, { width: 140, height: 140, top: 40,  left: -50, backgroundColor: 'rgba(255,255,255,0.07)' }]} />
-        <View style={[styles.circle, { width: 90,  height: 90,  bottom: 30, right: 30, backgroundColor: 'rgba(255,255,255,0.08)' }]} />
+      <View style={styles.hero}>
+        <View style={[styles.circle, { width: 220, height: 220, top: -60, right: -60, backgroundColor: 'rgba(232,146,42,0.10)' }]} />
+        <View style={[styles.circle, { width: 140, height: 140, top: 40,  left: -50, backgroundColor: 'rgba(26,39,86,0.05)' }]} />
+        <View style={[styles.circle, { width: 90,  height: 90,  bottom: 30, right: 30, backgroundColor: 'rgba(232,146,42,0.07)' }]} />
 
         {/* Ombre chien qui court */}
         <Text style={styles.dogShadow1}>🐕</Text>
@@ -114,7 +110,7 @@ export default function LoginScreen({ onLogin }) {
           <Text style={styles.heroTitle}>PawWatch</Text>
           <Text style={styles.heroSub}>La garde d'animaux en toute confiance</Text>
         </View>
-      </LinearGradient>
+      </View>
 
       {/* ── FORMULAIRE ── */}
       <ScrollView
@@ -279,7 +275,7 @@ export default function LoginScreen({ onLogin }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.sand },
 
-  hero: { height: H * 0.38, justifyContent: 'flex-end', overflow: 'hidden' },
+  hero: { height: H * 0.38, justifyContent: 'flex-end', overflow: 'hidden', backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   circle: { position: 'absolute', borderRadius: 999 },
 
   dogShadow1: {
@@ -304,10 +300,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   logo:      { width: 120, height: 120 },
-  heroTitle: { fontSize: 28, ...FONTS.heavy, color: COLORS.white, letterSpacing: 1 },
-  heroSub:   { fontSize: 13, color: 'rgba(255,255,255,0.75)', marginTop: 4 },
+  heroTitle: { fontSize: 28, ...FONTS.heavy, color: COLORS.ink, letterSpacing: 1 },
+  heroSub:   { fontSize: 13, color: COLORS.muted, marginTop: 4 },
 
-  formScroll:  { flex: 1, marginTop: -24 },
+  formScroll:  { flex: 1 },
   formContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
   formCard: {
