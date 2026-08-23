@@ -95,7 +95,7 @@ export default function LoginScreen({ onLogin }) {
     >
       {/* ── HERO ── */}
       <LinearGradient
-        colors={['#7A2D0A', '#A84F22', '#D4703A']}
+        colors={['#1A2756', '#C4741A', '#E8922A']}
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         style={styles.hero}
       >
@@ -252,7 +252,7 @@ export default function LoginScreen({ onLogin }) {
             activeOpacity={0.85}
           >
             <LinearGradient
-              colors={['#A84F22', '#D4703A']}
+              colors={['#C4741A', '#E8922A']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
               style={styles.submitGradient}
             >
@@ -315,7 +315,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.xl,
     padding: 22,
     marginBottom: 16,
-    shadowColor: '#7A4F2E',
+    shadowColor: '#1A2756',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: COLORS.border,
     borderRadius: RADIUS.md, padding: 14,
   },
-  roleItemActive:  { borderColor: COLORS.bark, backgroundColor: '#FDF0E6' },
+  roleItemActive:  { borderColor: COLORS.bark, backgroundColor: '#FFF4E6' },
 
   roleItemEmoji:   { fontSize: 22 },
   roleItemLabel:   { fontSize: 14, ...FONTS.bold, color: COLORS.ink, marginBottom: 2 },
@@ -361,7 +361,7 @@ const styles = StyleSheet.create({
 
   petsitterInfo: {
     flexDirection: 'row', alignItems: 'flex-start', gap: 12,
-    backgroundColor: '#FDF0E6',
+    backgroundColor: '#FFF4E6',
     borderWidth: 1.5, borderColor: COLORS.bark,
     borderRadius: RADIUS.md, padding: 14, marginTop: 10,
   },

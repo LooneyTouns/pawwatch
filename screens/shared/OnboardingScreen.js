@@ -244,7 +244,7 @@ export default function OnboardingScreen({ user, onComplete }) {
 
       {/* Header gradient */}
       <LinearGradient
-        colors={['#7A4F2E', '#A0714F']}
+        colors={['#1A2756', '#E8922A']}
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
         style={styles.header}
       >
@@ -312,7 +312,7 @@ export default function OnboardingScreen({ user, onComplete }) {
           activeOpacity={0.85}
         >
           <LinearGradient
-            colors={isAnswered && !saving ? ['#7A4F2E', '#A0714F'] : ['#D4C4B5', '#D4C4B5']}
+            colors={isAnswered && !saving ? ['#1A2756', '#E8922A'] : ['#D4C4B5', '#D4C4B5']}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
             style={styles.nextGradient}
           >
@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
   },
-  optionSelected: { borderColor: COLORS.bark, backgroundColor: '#FDF0E6' },
+  optionSelected: { borderColor: COLORS.bark, backgroundColor: '#FFF4E6' },
   optionEmoji:    { fontSize: 32, marginBottom: 8 },
   optionLabel:    { fontSize: 13, ...FONTS.bold, color: COLORS.ink, textAlign: 'center' },
   optionLabelSelected: { color: COLORS.bark },

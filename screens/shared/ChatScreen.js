@@ -83,7 +83,7 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
       keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <LinearGradient colors={['#7A2D0A', '#D4703A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cs.header}>
+      <LinearGradient colors={['#1A2756', '#E8922A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cs.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={cs.backIcon}>←</Text>
         </TouchableOpacity>

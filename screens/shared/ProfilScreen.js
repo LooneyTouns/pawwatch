@@ -219,7 +219,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
           <>
             {/* Hero */}
             <LinearGradient
-              colors={['#7A2D0A', '#D4703A']}
+              colors={['#1A2756', '#E8922A']}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
               style={ps.heroSection}
             >

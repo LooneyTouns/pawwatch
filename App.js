@@ -296,12 +296,12 @@ export default function App() {
 
   return (
     <>
-      <StatusBar barStyle="light-content" backgroundColor="#7A2D0A" />
+      <StatusBar barStyle="light-content" backgroundColor="#1A2756" />
       <View style={styles.app}>
 
         {/* ── Header ── */}
         <LinearGradient
-          colors={['#7A2D0A', '#D4703A']}
+          colors={['#1A2756', '#E8922A']}
           start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
           style={styles.header}
         >
