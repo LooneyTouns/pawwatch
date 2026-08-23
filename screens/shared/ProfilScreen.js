@@ -331,46 +331,53 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
         {/* ════════ MODIFIER PROFIL ════════ */}
         {activeTab === 'modifier' && (
           <>
-            {/* Bandeau profil petsitter incomplet/complet */}
-            {isPetsitter && !profilComplet && (
-              <View style={ps.incompletBanner}>
-                <Text style={ps.incompletIcon}>⚠️</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={ps.incompletTitle}>Profil petsitter incomplet</Text>
-                  <Text style={ps.incompletSub}>
-                    Remplis toutes les sections ci-dessous et clique sur «{' '}
-                    <Text style={{ ...FONTS.bold }}>Valider mon profil</Text>
-                    {' '}» pour être visible des propriétaires.
-                  </Text>
-                  <View style={ps.checklistWrap}>
-                    {[
-                      { label: 'Photo de profil',                       done: !!photoProfi },
-                      { label: 'Spécialité (Dogsitter / Catsitter)',   done: isDogsitter || isCatsitter || isAllsitter },
-                      { label: 'Mode de garde accepté',                 done: modePromenade || modeChezProprio || modeGardeJour || modePension },
-                      { label: 'Expérience décrite',                    done: experience.trim().length > 0 },
-                      { label: 'Type de logement',                      done: !!logement },
-                      { label: aJardin ? 'Photo du jardin uploadée' : 'Jardin (oui / non)', done: aJardin !== null && (!aJardin || !!photoJardin) },
-                    ].map(item => (
-                      <View key={item.label} style={ps.checklistItem}>
-                        <Text style={[ps.checklistDot, { color: item.done ? '#22C55E' : COLORS.clay }]}>
-                          {item.done ? '✓' : '✗'}
-                        </Text>
-                        <Text style={[ps.checklistLabel, item.done && { color: '#16A34A' }]}>{item.label}</Text>
-                      </View>
-                    ))}
+            {/* Bandeau profil petsitter */}
+            {isPetsitter && (() => {
+              const steps = [
+                !!photoProfi,
+                isDogsitter || isCatsitter || isAllsitter,
+                modePromenade || modeChezProprio || modeGardeJour || modePension,
+                experience.trim().length > 0,
+                !!logement,
+                aJardin !== null && (!aJardin || !!photoJardin),
+              ];
+              const done  = steps.filter(Boolean).length;
+              const total = steps.length;
+              const pct   = Math.round((done / total) * 100);
+
+              if (profilComplet) return (
+                <View style={ps.statusCard}>
+                  <Text style={ps.statusCardIcon}>✅</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[ps.statusCardTitle, { color: COLORS.moss }]}>Profil validé · tu es visible !</Text>
+                    <Text style={ps.statusCardSub}>Les propriétaires peuvent te contacter.</Text>
                   </View>
                 </View>
-              </View>
-            )}
-            {isPetsitter && profilComplet && (
-              <View style={ps.completBanner}>
-                <Text style={ps.incompletIcon}>✅</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={ps.completTitle}>Profil petsitter validé — tu es visible !</Text>
-                  <Text style={ps.incompletSub}>Les propriétaires peuvent te contacter pour des gardes.</Text>
+              );
+
+              return (
+                <View style={ps.statusCard}>
+                  <Text style={ps.statusCardIcon}>⚠️</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={ps.statusCardHeader}>
+                      <Text style={ps.statusCardTitle}>Profil incomplet</Text>
+                      <Text style={ps.statusCardPct}>{pct} %</Text>
+                    </View>
+                    <Text style={ps.statusCardSub}>Complète ton profil pour recevoir des demandes.</Text>
+                    <View style={ps.statusBar}>
+                      <View style={[ps.statusBarFill, { width: `${pct}%` }]} />
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    style={ps.statusCardBtn}
+                    onPress={() => {/* scroll vers première section manquante */}}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={ps.statusCardBtnText}>Compléter →</Text>
+                  </TouchableOpacity>
                 </View>
-              </View>
-            )}
+              );
+            })()}
 
             {/* ─────── PHOTO DE PROFIL ─────── */}
             <SectionLabel label={isPetsitter ? 'Photo de profil *obligatoire' : 'Photo de profil'} />
@@ -871,26 +878,25 @@ const ps = StyleSheet.create({
   saveBtnReady: { backgroundColor: '#16A34A' },
   saveText:     { fontSize: 15, ...FONTS.heavy, color: COLORS.white },
 
-  // ── Bandeaux profil petsitter ──
-  incompletBanner: {
-    flexDirection: 'row', gap: 12, alignItems: 'flex-start',
+  // ── Carte statut profil petsitter (compacte) ──
+  statusCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: COLORS.warnBg, borderWidth: 1.5, borderColor: COLORS.warnBorder,
-    borderRadius: RADIUS.md, padding: 14, marginBottom: 16,
+    borderRadius: RADIUS.md, paddingHorizontal: 12, paddingVertical: 10,
+    marginBottom: 14,
   },
-  incompletIcon:  { fontSize: 22, marginTop: 2 },
-  incompletTitle: { fontSize: 14, ...FONTS.heavy, color: COLORS.clay, marginBottom: 4 },
-  incompletSub:   { fontSize: 12, color: COLORS.muted, lineHeight: 18, marginBottom: 10 },
-  checklistWrap:  { gap: 4 },
-  checklistItem:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  checklistDot:   { fontSize: 13, ...FONTS.heavy, width: 16 },
-  checklistLabel: { fontSize: 12, color: COLORS.muted },
-
-  completBanner: {
-    flexDirection: 'row', gap: 12, alignItems: 'center',
-    backgroundColor: COLORS.okBg, borderWidth: 1.5, borderColor: COLORS.okBorder,
-    borderRadius: RADIUS.md, padding: 14, marginBottom: 16,
+  statusCardIcon:   { fontSize: 20 },
+  statusCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 },
+  statusCardTitle:  { fontSize: 13, ...FONTS.heavy, color: COLORS.clay },
+  statusCardPct:    { fontSize: 12, ...FONTS.heavy, color: COLORS.clay },
+  statusCardSub:    { fontSize: 11, color: COLORS.muted, marginBottom: 6 },
+  statusBar:        { height: 4, backgroundColor: COLORS.warnBorder, borderRadius: 2, overflow: 'hidden' },
+  statusBarFill:    { height: '100%', backgroundColor: COLORS.bark, borderRadius: 2 },
+  statusCardBtn: {
+    backgroundColor: COLORS.bark, borderRadius: RADIUS.full,
+    paddingHorizontal: 12, paddingVertical: 6,
   },
-  completTitle: { fontSize: 14, ...FONTS.heavy, color: COLORS.moss, marginBottom: 2 },
+  statusCardBtnText: { fontSize: 12, ...FONTS.heavy, color: COLORS.white },
 
   // ── Mon compte (expandable) ──
   accountRow: {
