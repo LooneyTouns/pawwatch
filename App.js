@@ -279,7 +279,7 @@ export default function App() {
   return (
     <>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
-      <View style={styles.app}>
+      <ImageBackground source={PASTEL_BG} style={styles.app} imageStyle={styles.appBg}>
 
         {/* ── Header ── */}
         <ImageBackground source={PASTEL_BG} style={styles.header} imageStyle={styles.headerBg}>
@@ -373,7 +373,7 @@ export default function App() {
             );
           })}
         </View>
-      </View>
+      </ImageBackground>
     </>
   );
 }
@@ -381,7 +381,8 @@ export default function App() {
 
 // ─── Styles globaux ───────────────────────────────────────────────
 const styles = StyleSheet.create({
-  app: { flex: 1, backgroundColor: COLORS.sand },
+  app:   { flex: 1, backgroundColor: COLORS.sand },
+  appBg: { resizeMode: 'cover', opacity: 0.07 },
 
   splash: { flex: 1, backgroundColor: COLORS.bark, alignItems: 'center', justifyContent: 'center' },
   splashTitle: { fontSize: 36, ...FONTS.heavy, color: COLORS.white, marginTop: 16 },
