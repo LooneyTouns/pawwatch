@@ -30,28 +30,31 @@ export default function JournalListScreen({ garde, journauxCompletes, onSelectAn
       {/* En-tête garde */}
       <View style={styles.headerCard}>
         <View style={styles.headerRow}>
-          <Text style={styles.headerEmoji}>📋</Text>
+          <View style={styles.headerIconCircle}>
+            <Text style={styles.headerEmoji}>📋</Text>
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.headerTitle}>Journaux du jour</Text>
             <Text style={styles.headerSub}>
               {garde?.users?.nom ?? 'Propriétaire'} · {date}
             </Text>
           </View>
+          <View style={styles.headerCounter}>
+            <Text style={styles.headerCounterText}>{completes}/{total}</Text>
+          </View>
         </View>
 
         {/* Barre de progression */}
-        <View style={styles.progressWrap}>
-          <View style={styles.progressBar}>
-            <View style={[
-              styles.progressFill,
-              { width: total > 0 ? `${(completes / total) * 100}%` : '0%' },
-              allDone && { backgroundColor: '#22C55E' },
-            ]} />
-          </View>
-          <Text style={[styles.progressLabel, allDone && { color: '#22C55E' }]}>
-            {allDone ? '✓ Tous les journaux complétés !' : `${completes} / ${total} journal${total > 1 ? 'x' : ''} complété${completes > 1 ? 's' : ''}`}
-          </Text>
+        <View style={styles.progressBar}>
+          <View style={[
+            styles.progressFill,
+            { width: total > 0 ? `${(completes / total) * 100}%` : '0%' },
+            allDone && { backgroundColor: '#4ADE80' },
+          ]} />
         </View>
+        {allDone && (
+          <Text style={styles.progressLabel}>✓ Tous les journaux complétés !</Text>
+        )}
       </View>
 
       {/* Rappel */}
@@ -117,17 +120,26 @@ const styles = StyleSheet.create({
 
   headerCard: {
     backgroundColor: COLORS.bark, borderRadius: RADIUS.lg,
-    padding: 18, marginBottom: 12,
+    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12,
   },
-  headerRow:    { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-  headerEmoji:  { fontSize: 36 },
-  headerTitle:  { fontSize: 18, ...FONTS.heavy, color: COLORS.white },
-  headerSub:    { fontSize: 12, color: 'rgba(255,255,255,0.8)', marginTop: 2 },
+  headerRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  headerIconCircle: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerEmoji:  { fontSize: 18 },
+  headerTitle:  { fontSize: 15, ...FONTS.heavy, color: COLORS.white },
+  headerSub:    { fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 1 },
+  headerCounter: {
+    backgroundColor: 'rgba(255,255,255,0.22)', borderRadius: RADIUS.full,
+    paddingHorizontal: 10, paddingVertical: 3,
+  },
+  headerCounterText: { fontSize: 13, ...FONTS.heavy, color: COLORS.white },
 
-  progressWrap:  { gap: 6 },
-  progressBar:   { height: 8, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 4, overflow: 'hidden' },
-  progressFill:  { height: '100%', backgroundColor: COLORS.white, borderRadius: 4 },
-  progressLabel: { fontSize: 12, ...FONTS.bold, color: 'rgba(255,255,255,0.9)' },
+  progressBar:   { height: 5, backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 3, overflow: 'hidden' },
+  progressFill:  { height: '100%', backgroundColor: COLORS.white, borderRadius: 3 },
+  progressLabel: { fontSize: 11, ...FONTS.bold, color: 'rgba(255,255,255,0.9)', marginTop: 5 },
 
   infoBox: {
     backgroundColor: COLORS.okBg, borderWidth: 1, borderColor: COLORS.okBorder,
