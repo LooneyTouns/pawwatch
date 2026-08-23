@@ -4,6 +4,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, TextInput, Alert, Switch, Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
 import { supabase } from '../../lib/supabase';
@@ -52,6 +53,26 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
 
   const isProprio   = role === 'proprietaire';
   const isPetsitter = role === 'petsitter';
+
+  // ── Photo de profil ──
+  const [photoProfi, setPhotoProfi] = useState(null);
+
+  const pickPhotoProfi = async (fromCamera = true) => {
+    const fn = fromCamera
+      ? ImagePicker.launchCameraAsync
+      : ImagePicker.launchImageLibraryAsync;
+    const perm = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (perm.status !== 'granted') {
+      Alert.alert('Permission requise', fromCamera ? 'Accès à la caméra refusé.' : 'Accès à la galerie refusé.');
+      return;
+    }
+    const result = await fn({
+      allowsEditing: true, aspect: [1, 1], quality: 0.85,
+    });
+    if (!result.canceled) setPhotoProfi(result.assets[0].uri);
+  };
 
   // ── Tabs ──
   const [activeTab, setActiveTab] = useState('profil');
@@ -159,6 +180,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
 
   const isProfilComplet = () => {
     if (!isPetsitter) return true;
+    if (!photoProfi) return false;
     if (!isCatsitter && !isDogsitter && !isAllsitter) return false;
     if (!modePromenade && !modeChezProprio && !modeGardeJour && !modePension) return false;
     if (!experience.trim()) return false;
@@ -212,9 +234,17 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
               style={ps.heroSection}
             >
-              <View style={ps.heroAvatarRing}>
-                <Avatar initials={initiales} size={72} />
-              </View>
+              <TouchableOpacity
+                style={ps.heroAvatarRing}
+                onPress={() => pickPhotoProfi(true)}
+                onLongPress={() => pickPhotoProfi(false)}
+                activeOpacity={0.85}
+              >
+                <Avatar initials={initiales} size={72} photoUri={photoProfi} />
+                <View style={ps.heroAvatarBadge}>
+                  <Text style={{ fontSize: 12 }}>📸</Text>
+                </View>
+              </TouchableOpacity>
               <Text style={ps.heroNom}>{nom}</Text>
               <Text style={ps.heroEmail}>{email}</Text>
               <View style={ps.heroRolePill}>
@@ -314,6 +344,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                   </Text>
                   <View style={ps.checklistWrap}>
                     {[
+                      { label: 'Photo de profil',                       done: !!photoProfi },
                       { label: 'Spécialité (Dogsitter / Catsitter)',   done: isDogsitter || isCatsitter || isAllsitter },
                       { label: 'Mode de garde accepté',                 done: modePromenade || modeChezProprio || modeGardeJour || modePension },
                       { label: 'Expérience décrite',                    done: experience.trim().length > 0 },
@@ -340,6 +371,44 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                 </View>
               </View>
             )}
+
+            {/* ─────── PHOTO DE PROFIL ─────── */}
+            <SectionLabel label={isPetsitter ? 'Photo de profil *obligatoire' : 'Photo de profil'} />
+            <Card>
+              <View style={ps.photoProfiRow}>
+                <TouchableOpacity
+                  onPress={() => pickPhotoProfi(true)}
+                  onLongPress={() => pickPhotoProfi(false)}
+                  activeOpacity={0.85}
+                  style={ps.photoProfiCircle}
+                >
+                  {photoProfi
+                    ? <Image source={{ uri: photoProfi }} style={ps.photoProfiImg} />
+                    : <View style={ps.photoProfiPlaceholder}>
+                        <Text style={{ fontSize: 36 }}>👤</Text>
+                      </View>
+                  }
+                  <View style={ps.photoProfiCamera}>
+                    <Text style={{ fontSize: 14 }}>📸</Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={ps.photoProfiTitle}>
+                    {photoProfi ? '✓ Photo ajoutée' : 'Ajouter une photo'}
+                  </Text>
+                  <Text style={ps.photoProfiHint}>
+                    {photoProfi
+                      ? 'Appuie pour changer · maintenir = galerie'
+                      : '📸 Appuyer = caméra · Maintenir = galerie'}
+                  </Text>
+                  {isPetsitter && !photoProfi && (
+                    <View style={ps.photoProfiAlerte}>
+                      <Text style={ps.photoProfiAlerteText}>Obligatoire pour activer le profil</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            </Card>
 
             {/* ─────── COORDONNÉES (tous les rôles) ─────── */}
             <SectionLabel label="Mes coordonnées" />
@@ -723,7 +792,7 @@ const ps = StyleSheet.create({
     width: 84, height: 84, borderRadius: 42,
     borderWidth: 3, borderColor: 'rgba(255,255,255,0.45)',
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 12, overflow: 'hidden',
+    marginBottom: 12, position: 'relative',
   },
   heroNom:       { fontSize: 22, ...FONTS.heavy, color: COLORS.white, marginBottom: 3 },
   heroEmail:     { fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 12 },
@@ -859,4 +928,43 @@ const ps = StyleSheet.create({
   logoutText: { fontSize: 15, ...FONTS.bold, color: COLORS.clay },
 
   version: { fontSize: 12, color: COLORS.border, textAlign: 'center', marginTop: 20 },
+
+  // ── Photo de profil (Modifier) ──
+  photoProfiRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  photoProfiCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    position: 'relative',
+  },
+  photoProfiImg:  { width: 80, height: 80, borderRadius: 40 },
+  photoProfiPlaceholder: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: COLORS.sand,
+    borderWidth: 2, borderColor: COLORS.border, borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  photoProfiCamera: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: COLORS.bark,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: COLORS.white,
+  },
+  photoProfiTitle: { fontSize: 14, ...FONTS.heavy, color: COLORS.ink, marginBottom: 4 },
+  photoProfiHint:  { fontSize: 11, color: COLORS.muted, lineHeight: 16 },
+  photoProfiAlerte: {
+    marginTop: 8, backgroundColor: COLORS.warnBg,
+    borderRadius: RADIUS.sm, paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: 1, borderColor: COLORS.warnBorder,
+    alignSelf: 'flex-start',
+  },
+  photoProfiAlerteText: { fontSize: 11, color: COLORS.clay, ...FONTS.bold },
+
+  // ── Badge camera sur hero ──
+  heroAvatarBadge: {
+    position: 'absolute', bottom: 0, right: 0,
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: COLORS.bark,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: COLORS.white,
+  },
 });

@@ -28,9 +28,12 @@ export const Badge = ({ label, color = 'default' }) => {
 };
 
 // ─── Avatar ──────────────────────────────────────────────────────
-export const Avatar = ({ initials, size = 38 }) => (
-  <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
-    <Text style={[styles.avatarText, { fontSize: size * 0.38 }]}>{initials}</Text>
+export const Avatar = ({ initials, size = 38, photoUri }) => (
+  <View style={[styles.avatar, { width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }]}>
+    {photoUri
+      ? <Image source={{ uri: photoUri }} style={{ width: size, height: size, borderRadius: size / 2 }} />
+      : <Text style={[styles.avatarText, { fontSize: size * 0.38 }]}>{initials}</Text>
+    }
   </View>
 );
 
