@@ -165,7 +165,7 @@ export default function App() {
 
   if (loading) return (
     <View style={styles.splash}>
-      <Text style={{ fontSize: 64 }}>🐾</Text>
+      <Image source={APP_LOGO} style={styles.splashLogo} resizeMode="contain" />
       <Text style={styles.splashTitle}>PawWatch</Text>
     </View>
   );
@@ -384,8 +384,9 @@ const styles = StyleSheet.create({
   app:   { flex: 1, backgroundColor: COLORS.sand },
   appBg: { resizeMode: 'cover', opacity: 0.07 },
 
-  splash: { flex: 1, backgroundColor: COLORS.bark, alignItems: 'center', justifyContent: 'center' },
-  splashTitle: { fontSize: 36, ...FONTS.heavy, color: COLORS.white, marginTop: 16 },
+  splash:      { flex: 1, backgroundColor: COLORS.sand, alignItems: 'center', justifyContent: 'center' },
+  splashLogo:  { width: 120, height: 120, marginBottom: 16 },
+  splashTitle: { fontSize: 32, ...FONTS.heavy, color: COLORS.ink },
 
   header: {
     paddingTop: Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight ?? 24) + 10,
