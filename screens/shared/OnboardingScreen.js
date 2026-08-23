@@ -240,19 +240,15 @@ export default function OnboardingScreen({ user, onComplete }) {
     <View style={styles.root}>
       <StatusBar barStyle="light-content" />
 
-      {/* Header gradient */}
-      <LinearGradient
-        colors={['#1A2756', '#E8922A']}
-        start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-        style={styles.header}
-      >
+      {/* Header */}
+      <View style={styles.header}>
         <Text style={styles.headerStep}>{currentIndex + 1} / {questions.length}</Text>
         <Text style={styles.headerTitle}>Ton profil PawWatch 🐾</Text>
         {/* Barre de progression */}
         <View style={styles.progressBar}>
           <Animated.View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
         </View>
-      </LinearGradient>
+      </View>
 
       {/* Slide */}
       <Animated.View style={[styles.slide, { transform: [{ translateX: slideAnim }] }]}>
@@ -335,6 +331,7 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 56 : (StatusBar.currentHeight ?? 24) + 12,
     paddingBottom: 24,
     paddingHorizontal: 24,
+    backgroundColor: COLORS.ink,
   },
   headerStep:  { fontSize: 12, color: 'rgba(255,255,255,0.7)', ...FONTS.bold, letterSpacing: 1, marginBottom: 4 },
   headerTitle: { fontSize: 20, color: COLORS.white, ...FONTS.heavy, marginBottom: 16 },

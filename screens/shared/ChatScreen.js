@@ -4,7 +4,6 @@ import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, RADIUS } from '../../lib/theme';
 import { Avatar } from '../../components/UI';
 
@@ -83,7 +82,7 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
       keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <LinearGradient colors={['#1A2756', '#E8922A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={cs.header}>
+      <View style={cs.header}>
         <TouchableOpacity onPress={onBack} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Text style={cs.backIcon}>←</Text>
         </TouchableOpacity>
@@ -100,7 +99,7 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
           <View style={cs.onlineDot} />
           <Text style={cs.onlineText}>En ligne</Text>
         </View>
-      </LinearGradient>
+      </View>
 
       {/* Message list */}
       <FlatList
@@ -180,6 +179,7 @@ const cs = StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 14, paddingVertical: 11, gap: 12,
+    backgroundColor: COLORS.ink,
   },
   backIcon:        { fontSize: 22, color: COLORS.white, ...FONTS.bold, marginRight: 2 },
   headerAvatarRing:{ borderRadius: 22, borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)', overflow: 'hidden' },

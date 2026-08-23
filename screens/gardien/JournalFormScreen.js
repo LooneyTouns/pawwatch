@@ -681,7 +681,7 @@ const styles = StyleSheet.create({
 
   headerCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: COLORS.bark, borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.ink, borderRadius: RADIUS.lg,
     padding: 18, marginBottom: 12,
   },
   headerEmoji: { fontSize: 40 },

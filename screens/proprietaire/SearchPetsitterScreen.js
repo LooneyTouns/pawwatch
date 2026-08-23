@@ -450,7 +450,7 @@ const styles = StyleSheet.create({
   mapBubble:      { backgroundColor: COLORS.bark, borderRadius: 20, width: 36, height: 36, alignItems: 'center', justifyContent: 'center', ...SHADOW.card, shadowOpacity: 0.2, elevation: 4 },
   mapBubbleIcon:  { width: 22, height: 22, resizeMode: 'contain' },
 
-  mapModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.bark, paddingHorizontal: 16, paddingTop: 52, paddingBottom: 14 },
+  mapModalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.ink, paddingHorizontal: 16, paddingTop: 52, paddingBottom: 14 },
   mapModalTitle:  { fontSize: 16, ...FONTS.heavy, color: COLORS.white },
   mapModalClose:  { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: RADIUS.sm, paddingHorizontal: 12, paddingVertical: 6 },
   mapModalCloseText: { fontSize: 14, ...FONTS.bold, color: COLORS.white },

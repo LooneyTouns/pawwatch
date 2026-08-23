@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
   content:   { padding: 16, paddingBottom: 60 },
 
   headerCard: {
-    backgroundColor: COLORS.bark, borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.ink, borderRadius: RADIUS.lg,
     paddingHorizontal: 14, paddingVertical: 12, marginBottom: 12,
   },
   headerRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },

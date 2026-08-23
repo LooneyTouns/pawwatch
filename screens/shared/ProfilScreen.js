@@ -5,7 +5,6 @@ import {
   StyleSheet, TextInput, Alert, Switch, Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
 import { supabase } from '../../lib/supabase';
 import { Card, Avatar, SectionLabel, PhotoUpload, AnimalEditor, PriceInput } from '../../components/UI';
@@ -229,11 +228,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
         {activeTab === 'profil' && (
           <>
             {/* Hero */}
-            <LinearGradient
-              colors={['#1A2756', '#E8922A']}
-              start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              style={ps.heroSection}
-            >
+            <View style={ps.heroSection}>
               <TouchableOpacity
                 style={ps.heroAvatarRing}
                 onPress={() => pickPhotoProfi(true)}
@@ -262,7 +257,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                   </View>
                 ))}
               </View>
-            </LinearGradient>
+            </View>
 
             {/* Infos compte */}
             <SectionLabel label="Mon compte" />
@@ -794,7 +789,7 @@ const ps = StyleSheet.create({
   tabBtnTextActive:{ fontSize: 13, ...FONTS.bold, color: COLORS.white },
 
   // ── Hero ──
-  heroSection: { alignItems: 'center', paddingTop: 24, paddingBottom: 0, paddingHorizontal: 20 },
+  heroSection: { alignItems: 'center', paddingTop: 24, paddingBottom: 0, paddingHorizontal: 20, backgroundColor: COLORS.ink },
   heroAvatarRing: {
     width: 84, height: 84, borderRadius: 42,
     borderWidth: 3, borderColor: 'rgba(255,255,255,0.45)',
