@@ -46,12 +46,11 @@ export default function PaiementScreen({ garde }) {
           onPress: async () => {
             setDebloquer(true);
             try {
-              await debloquerPaiement(garde?.id ?? 'garde-001');
-              setPaiement(p => ({ ...p, statut: 'debloque', debloque_at: new Date().toISOString() }));
-            } catch (e) {
-              // En mode demo, on simule quand même
-              setPaiement(p => ({ ...p, statut: 'debloque', debloque_at: new Date().toISOString() }));
+              if (garde?.id) await debloquerPaiement(garde.id);
+            } catch (_) {
+              // ignore — on simule quand même
             } finally {
+              setPaiement(p => ({ ...p, statut: 'debloque', debloque_at: new Date().toISOString() }));
               setDebloquer(false);
             }
           },
