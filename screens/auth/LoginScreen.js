@@ -3,8 +3,10 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, Image,
   StyleSheet, ScrollView, KeyboardAvoidingView,
-  Platform, ActivityIndicator, Dimensions,
+  Platform, ActivityIndicator, Dimensions, ImageBackground,
 } from 'react-native';
+
+const PASTEL_BG = require('../../assets/pastel.png');
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS, FONTS, RADIUS } from '../../lib/theme';
 import { signIn, signUp } from '../../lib/supabase';
@@ -94,7 +96,7 @@ export default function LoginScreen({ onLogin }) {
       style={styles.root}
     >
       {/* ── HERO ── */}
-      <View style={styles.hero}>
+      <ImageBackground source={PASTEL_BG} style={styles.hero} imageStyle={styles.heroBg}>
         <View style={[styles.circle, { width: 220, height: 220, top: -60, right: -60, backgroundColor: 'rgba(232,146,42,0.10)' }]} />
         <View style={[styles.circle, { width: 140, height: 140, top: 40,  left: -50, backgroundColor: 'rgba(26,39,86,0.05)' }]} />
         <View style={[styles.circle, { width: 90,  height: 90,  bottom: 30, right: 30, backgroundColor: 'rgba(232,146,42,0.07)' }]} />
@@ -110,7 +112,7 @@ export default function LoginScreen({ onLogin }) {
           <Text style={styles.heroTitle}>PawWatch</Text>
           <Text style={styles.heroSub}>La garde d'animaux en toute confiance</Text>
         </View>
-      </View>
+      </ImageBackground>
 
       {/* ── FORMULAIRE ── */}
       <ScrollView
@@ -274,7 +276,8 @@ export default function LoginScreen({ onLogin }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.sand },
 
-  hero: { height: H * 0.38, justifyContent: 'flex-end', overflow: 'hidden', backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  hero:   { height: H * 0.38, justifyContent: 'flex-end', overflow: 'hidden', backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
+  heroBg: { resizeMode: 'cover', opacity: 0.35 },
   circle: { position: 'absolute', borderRadius: 999 },
 
   dogShadow1: {

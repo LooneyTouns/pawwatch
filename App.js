@@ -1,10 +1,11 @@
 // App.js — Point d'entrée PawWatch
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image, ImageBackground } from 'react-native';
 
 const LEDGER_ICON = require('./assets/ledger-icon.png');
 const MSG_ICON    = require('./assets/msg.png');
 const APP_LOGO    = require('./assets/logo.png');
+const PASTEL_BG   = require('./assets/pastel.png');
 import { COLORS, FONTS, RADIUS } from './lib/theme';
 import { getUser, signOut }       from './lib/supabase';
 import { useNotifications, scheduleJournalReminder } from './hooks/useNotifications';
@@ -281,7 +282,7 @@ export default function App() {
       <View style={styles.app}>
 
         {/* ── Header ── */}
-        <View style={styles.header}>
+        <ImageBackground source={PASTEL_BG} style={styles.header} imageStyle={styles.headerBg}>
           <View style={styles.headerLeft}>
             <Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" />
             <Text style={styles.headerGreet}>
@@ -321,7 +322,7 @@ export default function App() {
               </View>
             )}
           </View>
-        </View>
+        </ImageBackground>
 
         {/* Bandeau profil incomplet */}
         {isPetsitterRole && !profilPetsitterComplet && (
@@ -391,7 +392,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: COLORS.white,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    overflow: 'hidden',
   },
+  headerBg: { resizeMode: 'cover', opacity: 0.3 },
   headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerLogo:  { width: 40, height: 40 },
   headerGreet: { fontSize: 17, color: COLORS.ink, ...FONTS.heavy },
