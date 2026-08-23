@@ -97,18 +97,8 @@ export default function LoginScreen({ onLogin }) {
     >
       {/* ── HERO ── */}
       <ImageBackground source={PASTEL_BG} style={styles.hero} imageStyle={styles.heroBg}>
-        <View style={[styles.circle, { width: 220, height: 220, top: -60, right: -60, backgroundColor: 'rgba(232,146,42,0.10)' }]} />
-        <View style={[styles.circle, { width: 140, height: 140, top: 40,  left: -50, backgroundColor: 'rgba(26,39,86,0.05)' }]} />
-        <View style={[styles.circle, { width: 90,  height: 90,  bottom: 30, right: 30, backgroundColor: 'rgba(232,146,42,0.07)' }]} />
-
-        {/* Ombre chien qui court */}
-        <Text style={styles.dogShadow1}>🐕</Text>
-        <Text style={styles.dogShadow2}>🐕</Text>
-
         <View style={styles.heroText}>
-          <View style={styles.logoWrap}>
-            <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
-          </View>
+          <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
           <Text style={styles.heroTitle}>PawWatch</Text>
           <Text style={styles.heroSub}>La garde d'animaux en toute confiance</Text>
         </View>
@@ -276,41 +266,28 @@ export default function LoginScreen({ onLogin }) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: COLORS.sand },
 
-  hero:   { height: H * 0.38, justifyContent: 'flex-end', overflow: 'hidden', backgroundColor: COLORS.white, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  heroBg: { resizeMode: 'cover', opacity: 0.35 },
-  circle: { position: 'absolute', borderRadius: 999 },
+  hero:   {
+    height: H * 0.55,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+    backgroundColor: '#FAF5EE',
+  },
+  heroBg: { resizeMode: 'cover', opacity: 0.9 },
 
-  dogShadow1: {
-    position: 'absolute',
-    fontSize: 140,
-    opacity: 0.13,
-    bottom: -10,
-    left: -10,
-    transform: [{ rotate: '-8deg' }, { scaleX: -1 }],
-  },
-  dogShadow2: {
-    position: 'absolute',
-    fontSize: 80,
-    opacity: 0.08,
-    bottom: 30,
-    left: 110,
-    transform: [{ rotate: '-8deg' }, { scaleX: -1 }],
-  },
-  heroText: { alignItems: 'center', justifyContent: 'center', flex: 1, paddingBottom: 20 },
-  logoWrap: {
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 14,
-  },
-  logo:      { width: 120, height: 120 },
-  heroTitle: { fontSize: 28, ...FONTS.heavy, color: COLORS.ink, letterSpacing: 1 },
-  heroSub:   { fontSize: 13, color: COLORS.muted, marginTop: 4 },
+  heroText: { alignItems: 'center', paddingTop: 20 },
+  logo:      { width: 130, height: 130, marginBottom: 14 },
+  heroTitle: { fontSize: 30, ...FONTS.heavy, color: COLORS.ink, letterSpacing: 1 },
+  heroSub:   { fontSize: 13, color: COLORS.muted, marginTop: 6 },
 
-  formScroll:  { flex: 1 },
+  formScroll:  { flex: 1, marginTop: -24 },
   formContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
   formCard: {
     backgroundColor: COLORS.cream,
     borderRadius: RADIUS.xl,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     padding: 22,
     marginBottom: 16,
     shadowColor: '#1A2756',
