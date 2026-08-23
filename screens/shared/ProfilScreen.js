@@ -43,13 +43,6 @@ const OuiNon = ({ value, onChange }) => (
   </View>
 );
 
-// ── Bandeau de section (les_deux) ─────────────────────────────────
-const RoleBanner = ({ emoji, title }) => (
-  <View style={ps.roleBanner}>
-    <Text style={ps.roleBannerEmoji}>{emoji}</Text>
-    <Text style={ps.roleBannerTitle}>{title}</Text>
-  </View>
-);
 
 export default function ProfilScreen({ user, onLogout, onProfilComplet, profilComplet }) {
   const nom      = user?.user_metadata?.nom ?? user?.email ?? 'Utilisateur';
@@ -57,8 +50,8 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
   const role     = user?.user_metadata?.role ?? 'proprietaire';
   const initiales = nom.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
-  const isProprio   = role === 'proprietaire' || role === 'les_deux';
-  const isPetsitter = role === 'petsitter'    || role === 'les_deux';
+  const isProprio   = role === 'proprietaire';
+  const isPetsitter = role === 'petsitter';
 
   // ── Tabs ──
   const [activeTab, setActiveTab] = useState('profil');
@@ -158,15 +151,11 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
     );
   };
 
-  const labelRole =
-    role === 'proprietaire' ? '🏠 Propriétaire' :
-    role === 'petsitter'    ? '🤝 Petsitter'    :
-    '🌟 Proprio & Petsitter';
+  const labelRole = role === 'petsitter' ? '🤝 Petsitter' : '🏠 Propriétaire';
 
-  const rolePillColor =
-    role === 'proprietaire' ? { bg: COLORS.warnBg,  text: COLORS.clay } :
-    role === 'petsitter'    ? { bg: COLORS.okBg,    text: COLORS.moss } :
-    { bg: '#EDE9FE', text: '#7C3AED' };
+  const rolePillColor = role === 'petsitter'
+    ? { bg: COLORS.okBg,   text: COLORS.moss }
+    : { bg: COLORS.warnBg, text: COLORS.clay };
 
   const isProfilComplet = () => {
     if (!isPetsitter) return true;
@@ -405,8 +394,6 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
             {/* ─────── SECTION PROPRIÉTAIRE ─────── */}
             {isProprio && (
               <>
-                {role === 'les_deux' && <RoleBanner emoji="🏠" title="En tant que Propriétaire" />}
-
                 {/* Animaux */}
                 <SectionLabel label="Mes animaux" />
                 <Card>
@@ -416,13 +403,9 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
               </>
             )}
 
-            {/* Séparateur entre les deux sections (les_deux uniquement) */}
-            {isProprio && isPetsitter && <View style={ps.sectionDivider} />}
-
             {/* ─────── SECTION PETSITTER ─────── */}
             {isPetsitter && (
               <>
-                {role === 'les_deux' && <RoleBanner emoji="🤝" title="En tant que Petsitter" />}
 
                 {/* Spécialités */}
                 <SectionLabel label="Mes spécialités" />
@@ -758,16 +741,6 @@ const ps = StyleSheet.create({
   infoRowBorder: { borderBottomWidth: 1, borderBottomColor: COLORS.border },
   infoLabel:     { fontSize: 13, color: COLORS.muted, ...FONTS.medium },
   infoValue:     { fontSize: 14, ...FONTS.bold, color: COLORS.ink, flex: 1, textAlign: 'right' },
-
-  // ── Bandeau rôle (les_deux) ──
-  roleBanner: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-    backgroundColor: COLORS.bark, borderRadius: RADIUS.md,
-    paddingHorizontal: 16, paddingVertical: 10,
-    marginBottom: 6,
-  },
-  roleBannerEmoji: { fontSize: 20 },
-  roleBannerTitle: { fontSize: 14, ...FONTS.heavy, color: COLORS.white },
 
   sectionDivider: {
     height: 1, backgroundColor: COLORS.border,

@@ -63,7 +63,7 @@ export default function LoginScreen({ onLogin }) {
 
   const handleSubmit = async () => {
     if (mode === 'login' && email.trim() === 'admin@pawwatch.app' && password === 'PawAdmin2024!') {
-      onLogin({ id: 'admin-pawwatch', email: 'admin@pawwatch.app', user_metadata: { nom: 'Admin PawWatch', role: 'les_deux', isAdmin: true } });
+      onLogin({ id: 'admin-pawwatch', email: 'admin@pawwatch.app', user_metadata: { nom: 'Admin PawWatch', role: 'petsitter', isAdmin: true } });
       return;
     }
     const err = valider();
@@ -186,7 +186,6 @@ export default function LoginScreen({ onLogin }) {
                 {[
                   { id: 'proprietaire', emoji: '🏠', label: 'Propriétaire', sub: 'Je confie mon animal à un petsitter' },
                   { id: 'petsitter',    emoji: '🤝', label: 'Petsitter',    sub: 'Je garde les animaux des autres' },
-                  { id: 'les_deux',     emoji: '🌟', label: 'Les deux',     sub: 'Je suis proprio ET petsitter' },
                 ].map(r => (
                   <TouchableOpacity
                     key={r.id}

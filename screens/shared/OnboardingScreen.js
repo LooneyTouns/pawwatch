@@ -18,7 +18,6 @@ const ROLE_QUESTION = {
   options: [
     { id: 'proprietaire', emoji: '🏠', label: 'Propriétaire', sub: 'Je cherche un petsitter' },
     { id: 'petsitter',    emoji: '🤝', label: 'Petsitter',    sub: 'Je garde les animaux' },
-    { id: 'les_deux',     emoji: '🌟', label: 'Les deux',     sub: 'Proprio et petsitter' },
   ],
 };
 
@@ -161,9 +160,8 @@ const PROPRIO_QUESTIONS = [
 function getQuestions(roleAnswer) {
   const base = [ROLE_QUESTION];
   if (!roleAnswer) return base;
-  if (roleAnswer === 'petsitter')    return [...base, ...PETSITTER_QUESTIONS];
-  if (roleAnswer === 'proprietaire') return [...base, ...PROPRIO_QUESTIONS];
-  return [...base, ...PETSITTER_QUESTIONS, ...PROPRIO_QUESTIONS];
+  if (roleAnswer === 'petsitter') return [...base, ...PETSITTER_QUESTIONS];
+  return [...base, ...PROPRIO_QUESTIONS];
 }
 
 // ─── Composant principal ───────────────────────────────────────────

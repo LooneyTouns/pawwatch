@@ -100,8 +100,8 @@ export default function App() {
     if (isNewUser && !u.user_metadata?.isAdmin) {
       setShowOnboarding(true);
     }
-    // Planifier rappel quotidien si petsitter ou les_deux
-    if (u.user_metadata?.role === 'petsitter' || u.user_metadata?.role === 'les_deux') {
+    // Planifier rappel quotidien si petsitter
+    if (u.user_metadata?.role === 'petsitter') {
       scheduleJournalReminder(u.user_metadata?.nom ?? 'Petsitter').catch(() => {});
     }
   };
@@ -195,23 +195,15 @@ export default function App() {
         { id: 'notifs',   icon: '🔔', label: 'Notifs'   },
         { id: 'profil',   icon: '👤', label: 'Profil'   },
       ]
-    : role === 'petsitter'
-    ? [
+    : [
         journalTab,
         { id: 'messages', icon: msgIcon, label: 'Messages' },
         { id: 'demandes', icon: '📨', label: 'Demandes' },
         { id: 'notifs',   icon: '🔔', label: 'Notifs'   },
         { id: 'profil',   icon: '👤', label: 'Profil'   },
-      ]
-    : /* les_deux */ [
-        journalTab,
-        { id: 'chercher', icon: '🔍', label: 'Chercher' },
-        { id: 'messages', icon: msgIcon, label: 'Messages' },
-        { id: 'demandes', icon: '📨', label: 'Demandes' },
-        { id: 'profil',   icon: '👤', label: 'Profil'   },
       ];
 
-  const isPetsitterRole = role === 'petsitter' || role === 'les_deux';
+  const isPetsitterRole = role === 'petsitter';
 
   const renderJournalPetsitter = () => {
     if (journalAnimal) {
@@ -279,17 +271,6 @@ export default function App() {
           onProfilComplet={() => setProfilPetsitterComplet(true)} />
       );
     }
-    if (role === 'les_deux') {
-      if (activeTab === 'journal')  return renderJournalPetsitter();
-      if (activeTab === 'chercher') return <SearchPetsitterScreen user={user} onMatch={handleMatch} />;
-      if (activeTab === 'messages') return renderMessages();
-      if (activeTab === 'demandes') return <DemandesScreen profilComplet={profilPetsitterComplet} />;
-      if (activeTab === 'profil')   return (
-        <ProfilScreen user={user} onLogout={handleLogout}
-          profilComplet={profilPetsitterComplet}
-          onProfilComplet={() => setProfilPetsitterComplet(true)} />
-      );
-    }
   };
 
   const prenom = user?.user_metadata?.nom?.split(' ')[0] ?? '';
@@ -333,7 +314,6 @@ export default function App() {
                 {[
                   { id: 'proprietaire', label: '🏠' },
                   { id: 'petsitter',    label: '🤝' },
-                  { id: 'les_deux',     label: '🌟' },
                 ].map(r => (
                   <TouchableOpacity
                     key={r.id}
