@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image } 
 import { LinearGradient } from 'expo-linear-gradient';
 
 const LEDGER_ICON = require('./assets/ledger-icon.png');
+const APP_LOGO    = require('./assets/logo.png');
 import { COLORS, FONTS, RADIUS } from './lib/theme';
 import { getUser, signOut }       from './lib/supabase';
 import { useNotifications, scheduleJournalReminder } from './hooks/useNotifications';
@@ -306,11 +307,10 @@ export default function App() {
           style={styles.header}
         >
           <View style={styles.headerLeft}>
-            <Image source={LEDGER_ICON} style={styles.headerLogo} />
-            <View>
-              {prenom ? <Text style={styles.headerGreet}>Bonjour, {prenom} 👋</Text> : null}
-              <Text style={styles.headerTitle}>PawWatch</Text>
-            </View>
+            <Image source={APP_LOGO} style={styles.headerLogo} resizeMode="contain" />
+            <Text style={styles.headerGreet}>
+              {prenom ? `Bonjour, ${prenom} 👋` : 'PawWatch 🐾'}
+            </Text>
           </View>
 
           <View style={styles.headerRight}>
@@ -409,8 +409,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
   },
   headerLeft:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerLogo:  { width: 32, height: 32, resizeMode: 'contain' },
-  headerGreet: { fontSize: 12, color: 'rgba(255,255,255,0.9)', ...FONTS.bold },
+  headerLogo:  { width: 40, height: 40 },
+  headerGreet: { fontSize: 17, color: COLORS.white, ...FONTS.heavy },
   headerTitle: { color: COLORS.white, fontSize: 16, ...FONTS.heavy, letterSpacing: 0.3 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerBell:  { position: 'relative', padding: 4 },
