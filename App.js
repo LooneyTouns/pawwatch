@@ -446,12 +446,13 @@ const styles = StyleSheet.create({
   navIconImg:       { width: 22, height: 22, resizeMode: 'contain', opacity: 0.4 },
   navIconImgActive: { opacity: 1 },
   navBadge: {
-    position: 'absolute', top: -4, right: -6,
-    minWidth: 16, height: 16, borderRadius: 8,
-    backgroundColor: '#FF3B30', paddingHorizontal: 3,
+    position: 'absolute', top: -3, right: -3,
+    minWidth: 12, height: 12, borderRadius: 6,
+    backgroundColor: '#FF3B30', paddingHorizontal: 2,
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5, borderColor: COLORS.cream,
   },
-  navBadgeText: { fontSize: 9, color: '#fff', ...FONTS.bold },
+  navBadgeText: { fontSize: 7, color: '#fff', ...FONTS.bold },
   navLabel:       { fontSize: 10, ...FONTS.medium, color: COLORS.muted },
   navLabelActive: { color: COLORS.clay, ...FONTS.bold },
 
