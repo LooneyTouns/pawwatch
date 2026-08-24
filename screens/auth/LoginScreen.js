@@ -275,7 +275,7 @@ const styles = StyleSheet.create({
   },
   heroBg: { resizeMode: 'cover', opacity: 0.9 },
 
-  heroText: { alignItems: 'center', paddingTop: 20 },
+  heroText: { alignItems: 'center', paddingTop: 20, marginTop: -38 },
   logo:      { width: 130, height: 130, marginBottom: 14 },
   heroTitle: { fontSize: 30, ...FONTS.heavy, color: COLORS.ink, letterSpacing: 1 },
   heroSub:   { fontSize: 13, color: COLORS.muted, marginTop: 6 },
