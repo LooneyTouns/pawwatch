@@ -95,22 +95,22 @@ export default function LoginScreen({ onLogin }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.root}
     >
-      {/* ── HERO ── */}
-      <ImageBackground source={PASTEL_BG} style={styles.hero} imageStyle={styles.heroBg}>
-        <View style={styles.heroText}>
-          <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
-          <Text style={styles.heroTitle}>PawWatch</Text>
-          <Text style={styles.heroSub}>La garde d'animaux en toute confiance</Text>
-        </View>
-      </ImageBackground>
-
-      {/* ── FORMULAIRE ── */}
+      {/* ── TOUT défile ensemble ── */}
       <ScrollView
         style={styles.formScroll}
         contentContainerStyle={styles.formContent}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
+        {/* Hero */}
+        <ImageBackground source={PASTEL_BG} style={styles.hero} imageStyle={styles.heroBg}>
+          <View style={styles.heroText}>
+            <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
+            <Text style={styles.heroTitle}>PawWatch</Text>
+            <Text style={styles.heroSub}>La garde d'animaux en toute confiance</Text>
+          </View>
+        </ImageBackground>
+
         <View style={styles.formCard}>
 
           {/* Toggle login / register */}
@@ -272,6 +272,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
     backgroundColor: '#FAF5EE',
+    marginHorizontal: -16,
+    marginTop: -0,
+    marginBottom: 16,
   },
   heroBg: { resizeMode: 'cover', opacity: 0.9 },
 
@@ -280,7 +283,7 @@ const styles = StyleSheet.create({
   heroTitle: { fontSize: 30, ...FONTS.heavy, color: COLORS.ink, letterSpacing: 1 },
   heroSub:   { fontSize: 13, color: COLORS.muted, marginTop: 6 },
 
-  formScroll:  { flex: 1, marginTop: -24 },
+  formScroll:  { flex: 1 },
   formContent: { paddingHorizontal: 16, paddingBottom: 40 },
 
   formCard: {
