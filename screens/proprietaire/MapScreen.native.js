@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  Image, ActivityIndicator, Dimensions, FlatList,
+  Image, ActivityIndicator, Dimensions, FlatList, TextInput,
 } from 'react-native';
 import MapView, { Marker, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -26,59 +26,16 @@ const haversine = (lat1, lon1, lat2, lon2) => {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
-// ── Mock petsitters (positions autour de Paris) ───────────────────
-// En production : requête Supabase avec ST_DWithin
+import { getPawsitters } from '../../lib/supabase';
+
 const BASE = { lat: 48.8566, lon: 2.3522 };
-const MOCK_PETSITTERS = [
-  {
-    id: 'p1', nom: 'Marie L.',   initiales: 'ML',
-    specialites: ['chien', 'chat'], tarif: 12, note: 4.9, avis: 47,
-    dispo: 'now', modes: ['promenade', 'gardeJour'],
-    lat: BASE.lat + 0.005, lon: BASE.lon + 0.008,
-  },
-  {
-    id: 'p2', nom: 'Thomas R.',  initiales: 'TR',
-    specialites: ['chien'], tarif: 10, note: 4.7, avis: 23,
-    dispo: 'week', modes: ['promenade'],
-    lat: BASE.lat - 0.010, lon: BASE.lon - 0.012,
-  },
-  {
-    id: 'p3', nom: 'Camille B.', initiales: 'CB',
-    specialites: ['chien', 'chat'], tarif: 15, note: 5.0, avis: 68,
-    dispo: 'now', modes: ['pension', 'gardeJour'],
-    lat: BASE.lat + 0.018, lon: BASE.lon + 0.021,
-  },
-  {
-    id: 'p4', nom: 'Lucas M.',   initiales: 'LM',
-    specialites: ['chat'], tarif: 9, note: 4.5, avis: 12,
-    dispo: 'month', modes: ['gardeJour'],
-    lat: BASE.lat - 0.022, lon: BASE.lon + 0.015,
-  },
-  {
-    id: 'p5', nom: 'Anaïs V.',   initiales: 'AV',
-    specialites: ['chien', 'chat'], tarif: 14, note: 4.8, avis: 91,
-    dispo: 'now', modes: ['pension', 'promenade', 'gardeJour'],
-    lat: BASE.lat + 0.030, lon: BASE.lon - 0.020,
-  },
-  {
-    id: 'p6', nom: 'Kevin D.',   initiales: 'KD',
-    specialites: ['chien'], tarif: 11, note: 4.6, avis: 34,
-    dispo: 'week', modes: ['promenade'],
-    lat: BASE.lat - 0.038, lon: BASE.lon + 0.028,
-  },
-  {
-    id: 'p7', nom: 'Sophie N.',  initiales: 'SN',
-    specialites: ['chat'], tarif: 13, note: 4.9, avis: 55,
-    dispo: 'now', modes: ['gardeJour', 'pension'],
-    lat: BASE.lat + 0.058, lon: BASE.lon - 0.044,
-  },
-  {
-    id: 'p8', nom: 'Julien P.',  initiales: 'JP',
-    specialites: ['chien', 'chat'], tarif: 16, note: 4.7, avis: 29,
-    dispo: 'week', modes: ['pension'],
-    lat: BASE.lat - 0.085, lon: BASE.lon + 0.063,
-  },
-];
+const DISPO_MAP = { 'Disponible maintenant': 'now', 'Ce week-end': 'week', 'Semaine prochaine': 'month', 'Flexible': 'week' };
+
+// If a pawsitter has no GPS coords, place them in a random offset around BASE
+const seedOffset = (id, idx) => {
+  const seed = idx + 1;
+  return { lat: BASE.lat + (seed % 2 === 0 ? 1 : -1) * seed * 0.007, lon: BASE.lon + (seed % 3 === 0 ? -1 : 1) * seed * 0.006 };
+};
 
 const DISPO_COLOR = { now: '#22C55E', week: '#F59E0B', month: '#94A3B8' };
 const DISPO_BG    = { now: '#F0FDF4', week: '#FFFBEB', month: '#F8FAFC' };
@@ -109,9 +66,10 @@ const FilterChip = ({ label, active, onPress }) => (
   </TouchableOpacity>
 );
 
-export default function MapScreen() {
+export default function MapScreen({ onContact }) {
   const [location,    setLocation]    = useState(null);
   const [loadingGps,  setLoadingGps]  = useState(true);
+  const [pawsitters,  setPawsitters]  = useState([]);
   const [selected,    setSelected]    = useState(null);
   const mapRef  = useRef(null);
   const flatRef = useRef(null);
@@ -121,15 +79,14 @@ export default function MapScreen() {
   const [filtreDispo, setFiltreDispo] = useState('all');
   const [filtreType,  setFiltreType]  = useState('all');
   const [filtreMode,  setFiltreMode]  = useState(null);
+  const [searchVille, setSearchVille] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status === 'granted') {
-          const loc = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
           setLocation({ lat: loc.coords.latitude, lon: loc.coords.longitude });
         } else {
           setLocation(BASE);
@@ -140,18 +97,35 @@ export default function MapScreen() {
         setLoadingGps(false);
       }
     })();
+
+    getPawsitters().then(data => {
+      setPawsitters(data.map((p, idx) => {
+        const offset = (p.latitude && p.longitude) ? {} : seedOffset(p.id, idx);
+        return {
+          ...p,
+          dispo: DISPO_MAP[p.dispo] ?? 'week',
+          lat: p.latitude ?? offset.lat,
+          lon: p.longitude ?? offset.lon,
+          avis: p.nb_avis ?? 0,
+        };
+      }));
+    }).catch(() => {});
   }, []);
 
   const center = location ?? BASE;
 
   // ── Calcul distance + filtrage ──
-  const withDist = MOCK_PETSITTERS.map(p => ({
+  const withDist = pawsitters.map(p => ({
     ...p,
     distance: haversine(center.lat, center.lon, p.lat, p.lon),
   }));
 
   const filtered = withDist.filter(p => {
-    if (p.distance > filtreKm) return false;
+    if (searchVille.trim()) {
+      if (!p.ville?.toLowerCase().includes(searchVille.trim().toLowerCase())) return false;
+    } else {
+      if (p.distance > filtreKm) return false;
+    }
     if (filtreDispo === 'now'  && p.dispo !== 'now')                         return false;
     if (filtreDispo === 'week' && p.dispo !== 'now' && p.dispo !== 'week')   return false;
     if (filtreType === 'chien' && !p.specialites.includes('chien'))          return false;
@@ -197,20 +171,37 @@ export default function MapScreen() {
       {/* ══════════════════════════════
           FILTRES
       ══════════════════════════════ */}
+      {/* Barre de recherche par ville */}
+      <View style={styles.searchBar}>
+        <Text style={styles.searchIcon}>🏙️</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Rechercher par ville…"
+          placeholderTextColor={COLORS.border}
+          value={searchVille}
+          onChangeText={setSearchVille}
+        />
+        {searchVille.length > 0 && (
+          <TouchableOpacity onPress={() => setSearchVille('')}>
+            <Text style={styles.searchClear}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       <View style={styles.filtersWrap}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filtersRow}
         >
-          {/* Distance */}
-          <Text style={styles.filterLabel}>📍</Text>
-          {[2, 5, 10, 20].map(km => (
+          {/* Distance — désactivé si recherche ville active */}
+          <Text style={[styles.filterLabel, searchVille.trim() && { opacity: 0.3 }]}>📍</Text>
+          {[5, 10, 20, 30].map(km => (
             <FilterChip
               key={km}
               label={`${km} km`}
-              active={filtreKm === km}
-              onPress={() => setFiltreKm(km)}
+              active={filtreKm === km && !searchVille.trim()}
+              onPress={() => { setSearchVille(''); setFiltreKm(km); }}
             />
           ))}
 
@@ -309,7 +300,7 @@ export default function MapScreen() {
       ══════════════════════════════ */}
       <View style={styles.resultsBar}>
         <Text style={styles.resultsCount}>
-          {filtered.length} petsitter{filtered.length !== 1 ? 's' : ''} dans {filtreKm} km
+          {filtered.length} pawsitter{filtered.length !== 1 ? 's' : ''} dans {filtreKm} km
         </Text>
         <View style={styles.legend}>
           <View style={[styles.legendDot, { backgroundColor: '#22C55E' }]} />
@@ -327,7 +318,7 @@ export default function MapScreen() {
       {filtered.length === 0 ? (
         <View style={styles.emptyWrap}>
           <Text style={styles.emptyIcon}>🔍</Text>
-          <Text style={styles.emptyTitle}>Aucun petsitter dans cette zone</Text>
+          <Text style={styles.emptyTitle}>Aucun pawsitter dans cette zone</Text>
           <Text style={styles.emptySub}>Essaie d'agrandir le rayon ou de modifier les filtres</Text>
           <TouchableOpacity
             style={styles.resetBtn}
@@ -357,7 +348,10 @@ export default function MapScreen() {
               {/* ── Top: avatar + nom + dispo ── */}
               <View style={styles.cardTop}>
                 <View style={[styles.avatar, { borderColor: DISPO_COLOR[p.dispo] }]}>
-                  <Text style={styles.avatarText}>{p.initiales}</Text>
+                  {p.photo_url
+                    ? <Image source={{ uri: p.photo_url }} style={styles.avatarImg} />
+                    : <Text style={styles.avatarText}>{p.initiales}</Text>
+                  }
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.cardNom}>{p.nom}</Text>
@@ -391,18 +385,28 @@ export default function MapScreen() {
               </View>
 
               {/* ── Modes de garde ── */}
-              <View style={styles.modesRow}>
-                {p.modes.map(m => (
-                  <View key={m} style={styles.modeTag}>
-                    <Text style={styles.modeIcon}>
-                      {m === 'promenade' ? '🚶' : m === 'pension' ? '🏨' : '☀️'}
-                    </Text>
-                    <Text style={styles.modeTxt}>
-                      {m === 'promenade' ? 'Promenade' : m === 'pension' ? 'Pension' : 'Garde jour'}
-                    </Text>
-                  </View>
-                ))}
-              </View>
+              {p.modes?.length > 0 && (
+                <View style={styles.modesRow}>
+                  {p.modes.map(m => {
+                    const SVC = {
+                      garde_domicile: { icon: '🏡', label: 'Dom. proprio' },
+                      garde_jour:     { icon: '☀️', label: 'Garde jour'  },
+                      promenade:      { icon: '🐕', label: 'Promenade'   },
+                      visite:         { icon: '🐱', label: 'Visite'      },
+                      nuitee:         { icon: '🌙', label: 'Nuitée'      },
+                      pension:        { icon: '🏨', label: 'Pension'     },
+                    };
+                    const s = SVC[m];
+                    if (!s) return null;
+                    return (
+                      <View key={m} style={styles.modeTag}>
+                        <Text style={styles.modeIcon}>{s.icon}</Text>
+                        <Text style={styles.modeTxt}>{s.label}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
 
               {/* ── Prix + CTA ── */}
               <View style={styles.cardFooter}>
@@ -413,7 +417,7 @@ export default function MapScreen() {
                     <Text style={styles.prixUnit}>/h</Text>
                   </Text>
                 </View>
-                <TouchableOpacity style={styles.ctaBtn} activeOpacity={0.8}>
+                <TouchableOpacity style={styles.ctaBtn} activeOpacity={0.8} onPress={() => onContact?.(p)}>
                   <Text style={styles.ctaText}>Contacter →</Text>
                 </TouchableOpacity>
               </View>
@@ -429,6 +433,12 @@ const styles = StyleSheet.create({
   container:   { flex: 1, backgroundColor: COLORS.sand },
   loadingWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   loadingText: { fontSize: 14, color: COLORS.muted, ...FONTS.medium },
+
+  // ── Barre de recherche ville ──
+  searchBar:   { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.cream, borderBottomWidth: 1, borderBottomColor: COLORS.border, paddingHorizontal: 14, paddingVertical: 8, gap: 8 },
+  searchIcon:  { fontSize: 16 },
+  searchInput: { flex: 1, fontSize: 14, ...FONTS.regular, color: COLORS.ink, paddingVertical: 4 },
+  searchClear: { fontSize: 14, color: COLORS.muted, paddingHorizontal: 4 },
 
   // ── Filtres ──
   filtersWrap: {
@@ -490,8 +500,9 @@ const styles = StyleSheet.create({
   cardSelected: { borderColor: COLORS.bark, backgroundColor: '#EFF9FF' },
 
   cardTop:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-  avatar:     { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.clay, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5 },
+  avatar:     { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.clay, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, overflow: 'hidden' },
   avatarText: { fontSize: 14, ...FONTS.heavy, color: COLORS.white },
+  avatarImg:  { width: 42, height: 42, borderRadius: 21 },
   cardNom:    { fontSize: 14, ...FONTS.heavy, color: COLORS.ink },
   cardNote:   { fontSize: 11, color: COLORS.muted, marginTop: 1 },
 

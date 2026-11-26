@@ -10,7 +10,7 @@ const MOCK_NOTIFS = [
   {
     id: '1', lu: false, heure: 'Il y a 5 min',
     icon: '📋', titre: 'Journal reçu',
-    corps: 'Le petsitter a envoyé le journal du mardi 24 juin pour Luna.',
+    corps: 'Le pawsitter a envoyé le journal du mardi 24 juin pour Luna.',
   },
   {
     id: '2', lu: false, heure: 'Il y a 2 h',
@@ -30,7 +30,7 @@ const MOCK_NOTIFS = [
   {
     id: '5', lu: true, heure: 'Lun. 09h00',
     icon: '🐾', titre: 'Garde commencée',
-    corps: 'La garde de Luna a démarré. Votre petsitter est prêt !',
+    corps: 'La garde de Luna a démarré. Votre pawsitter est prêt !',
   },
 ];
 
@@ -60,7 +60,7 @@ export default function NotificationsScreen() {
           <View style={styles.vide}>
             <Text style={{ fontSize: 48 }}>🔔</Text>
             <Text style={styles.videTitle}>Aucune notification</Text>
-            <Text style={styles.videSub}>Vous serez alerté dès que votre petsitter envoie un journal.</Text>
+            <Text style={styles.videSub}>Vous serez alerté dès que votre pawsitter envoie un journal.</Text>
           </View>
         )}
 

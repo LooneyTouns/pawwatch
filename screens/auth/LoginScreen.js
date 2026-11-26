@@ -29,14 +29,6 @@ const SectionBanner = ({ icon, title, sub }) => (
   </View>
 );
 
-const formatDate = (raw, prev) => {
-  const digits = raw.replace(/\D/g, '');
-  if (raw.length < prev.length) return raw;
-  let out = digits;
-  if (digits.length > 2) out = digits.slice(0, 2) + '/' + digits.slice(2);
-  if (digits.length > 4) out = digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4, 8);
-  return out;
-};
 
 export default function LoginScreen({ onLogin }) {
   const [mode,     setMode]     = useState('login');
@@ -45,42 +37,34 @@ export default function LoginScreen({ onLogin }) {
 
   const [prenom,    setPrenom]    = useState('');
   const [nom,       setNom]       = useState('');
-  const [dateNaiss, setDateNaiss] = useState('');
   const [role,      setRole]      = useState('proprietaire');
   const [email,     setEmail]     = useState('');
   const [password,  setPassword]  = useState('');
 
   const valider = () => {
-    if (mode === 'login') return null;
+    if (mode === 'login') {
+      if (!email.trim())   return "L'email est obligatoire.";
+      if (!password)       return 'Le mot de passe est obligatoire.';
+      return null;
+    }
     if (!prenom.trim())    return 'Le prénom est obligatoire.';
     if (!nom.trim())       return 'Le nom est obligatoire.';
-    if (!dateNaiss.trim()) return 'La date de naissance est obligatoire.';
-    if (dateNaiss.replace(/\D/g, '').length < 8)
-      return 'Date de naissance invalide (JJ/MM/AAAA).';
-    if (!email.trim())     return "L'email est obligatoire.";
-    if (!password || password.length < 6)
-      return 'Le mot de passe doit contenir au moins 6 caractères.';
     return null;
   };
 
   const handleSubmit = async () => {
-    if (mode === 'login' && email.trim() === 'admin@pawwatch.app' && password === 'PawAdmin2024!') {
-      onLogin({ id: 'admin-pawwatch', email: 'admin@pawwatch.app', user_metadata: { nom: 'Admin PawWatch', role: 'petsitter', isAdmin: true } });
-      return;
-    }
     const err = valider();
     if (err) { setError(err); return; }
     setError(null);
+    if (mode === 'register') {
+      const nomComplet = `${prenom.trim()} ${nom.trim()}`;
+      onLogin({ id: 'new-' + Date.now(), user_metadata: { nom: nomComplet } }, true);
+      return;
+    }
     setLoading(true);
     try {
-      const nomComplet = `${prenom.trim()} ${nom.trim()}`;
-      if (mode === 'login') {
-        const data = await signIn(email, password);
-        onLogin(data.user);
-      } else {
-        const data = await signUp(email, password, nomComplet, role);
-        onLogin(data.user, true);
-      }
+      const data = await signIn(email, password);
+      onLogin(data.user);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -106,7 +90,10 @@ export default function LoginScreen({ onLogin }) {
         <ImageBackground source={PASTEL_BG} style={styles.hero} imageStyle={styles.heroBg}>
           <View style={styles.heroText}>
             <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
-            <Text style={styles.heroTitle}>PawWatch</Text>
+            <Text style={styles.heroTitle}>
+              <Text style={{ color: COLORS.bark }}>Paw</Text>
+              <Text style={{ color: COLORS.moss }}>Watch</Text>
+            </Text>
             <Text style={styles.heroSub}>La garde d'animaux en toute confiance</Text>
           </View>
         </ImageBackground>
@@ -132,10 +119,8 @@ export default function LoginScreen({ onLogin }) {
           </View>
 
           {/* ════════ INSCRIPTION ════════ */}
-          {mode === 'register' && (
+          {mode === 'register' ? (
             <>
-              <SectionBanner icon="👤" title="Identité" sub="Informations personnelles" />
-
               <View style={styles.row2}>
                 <View style={{ flex: 1 }}>
                   <FieldLabel text="Prénom" required />
@@ -161,69 +146,32 @@ export default function LoginScreen({ onLogin }) {
                 </View>
               </View>
 
-              <FieldLabel text="Date de naissance" required />
+            </>
+          ) : (
+            <>
+              {/* ── Email + MDP (login uniquement) ── */}
+              <FieldLabel text="Email" />
               <TextInput
                 style={styles.input}
-                placeholder="JJ/MM/AAAA"
+                placeholder="sophie@email.com"
                 placeholderTextColor={COLORS.border}
-                value={dateNaiss}
-                onChangeText={v => setDateNaiss(formatDate(v, dateNaiss))}
-                keyboardType="numeric"
-                maxLength={10}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
               />
 
-              {/* ── Rôle ── */}
-              <FieldLabel text="Je suis…" required />
-              <View style={styles.roleList}>
-                {[
-                  { id: 'proprietaire', emoji: '🏠', label: 'Propriétaire', sub: 'Je confie mon animal à un petsitter' },
-                  { id: 'petsitter',    emoji: '🤝', label: 'Petsitter',    sub: 'Je garde les animaux des autres' },
-                ].map(r => (
-                  <TouchableOpacity
-                    key={r.id}
-                    onPress={() => setRole(r.id)}
-                    style={[styles.roleItem, role === r.id && styles.roleItemActive]}
-                  >
-                    <Text style={styles.roleItemEmoji}>{r.emoji}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.roleItemLabel, role === r.id && { color: COLORS.bark }]}>{r.label}</Text>
-                      <Text style={styles.roleItemSub}>{r.sub}</Text>
-                    </View>
-                    <View style={[styles.roleCheck, role === r.id && styles.roleCheckActive]}>
-                      {role === r.id && <Text style={styles.roleCheckMark}>✓</Text>}
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <SectionBanner icon="🔐" title="Mon compte" sub="Email et mot de passe" />
+              <FieldLabel text="Mot de passe" />
+              <TextInput
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor={COLORS.border}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
             </>
-          )}
-
-          {/* ── Email + MDP ── */}
-          <FieldLabel text="Email" required={mode === 'register'} />
-          <TextInput
-            style={styles.input}
-            placeholder="sophie@email.com"
-            placeholderTextColor={COLORS.border}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-
-          <FieldLabel text="Mot de passe" required={mode === 'register'} />
-          <TextInput
-            style={styles.input}
-            placeholder="••••••••"
-            placeholderTextColor={COLORS.border}
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-          {mode === 'register' && (
-            <Text style={styles.pwdHint}>Minimum 6 caractères</Text>
           )}
 
           {error && (
@@ -246,7 +194,7 @@ export default function LoginScreen({ onLogin }) {
               {loading
                 ? <ActivityIndicator color={COLORS.white} />
                 : <Text style={styles.submitText}>
-                    {mode === 'login' ? 'Se connecter 🐾' : 'Créer mon compte 🐾'}
+                    {mode === 'login' ? 'Se connecter 🐾' : 'Continuer →'}
                   </Text>
               }
             </LinearGradient>
@@ -279,8 +227,8 @@ const styles = StyleSheet.create({
   heroBg: { resizeMode: 'cover', opacity: 0.9 },
 
   heroText: { alignItems: 'center', paddingTop: 20, marginTop: -38 },
-  logo:      { width: 130, height: 130, marginBottom: 14, marginTop: -38 },
-  heroTitle: { fontSize: 30, ...FONTS.heavy, color: COLORS.ink, letterSpacing: 1 },
+  logo:      { width: 160, height: 160, marginBottom: 14, marginTop: -38 },
+  heroTitle: { fontSize: 36, fontFamily: 'KoalaStation', color: COLORS.ink, letterSpacing: 1 },
   heroSub:   { fontSize: 13, color: COLORS.muted, marginTop: 6 },
 
   formScroll:  { flex: 1 },

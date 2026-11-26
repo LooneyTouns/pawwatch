@@ -46,7 +46,7 @@ export const PhotoUpload = ({ label, icon, onPhoto, photoUri }) => {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [4, 3],
       quality: 0.8,
@@ -212,7 +212,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { alert('Permission galerie requise.'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true, aspect: [1, 1], quality: 0.85,
     });
     if (!result.canceled) upd('photo', result.assets[0].uri);
@@ -286,7 +286,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
       />
 
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Race</Text>
+        <Text style={aStyles.fieldLbl}>Race *</Text>
         <TextInput style={aStyles.textInput} placeholder="Ex : Golden Retriever, Maine Coon…"
           placeholderTextColor={COLORS.border} value={animal.race ?? ''}
           onChangeText={v => upd('race', v)} />
@@ -304,7 +304,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
             value={animal.age ?? ''} onChangeText={v => upd('age', v)} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={aStyles.fieldLbl}>Poids</Text>
+          <Text style={aStyles.fieldLbl}>Poids *</Text>
           <TextInput style={aStyles.textInput} placeholder="Ex : 28 kg" placeholderTextColor={COLORS.border}
             value={animal.poids ?? ''} onChangeText={v => upd('poids', v)} keyboardType="numeric" />
         </View>
@@ -313,36 +313,36 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
       {/* ════ 2. SANTÉ ════ */}
       <AnimalSection icon="❤️" title="Santé" />
 
-      <ChipRow label="Stérilisé / Castré"
+      <ChipRow label="Stérilisé / Castré *"
         options={[{ label: 'Oui', value: true }, { label: 'Non', value: false }]}
         value={animal.sterilise} onSelect={v => upd('sterilise', v)}
       />
-      <ChipRow label="Vaccins à jour"
+      <ChipRow label="Vaccins à jour *"
         options={[{ label: 'Oui', value: true }, { label: 'Non', value: false }]}
         value={animal.vaccins} onSelect={v => upd('vaccins', v)}
       />
-      <ChipRow label="Carnet de santé"
+      <ChipRow label="Carnet de santé *"
         options={[{ label: 'Oui', value: true }, { label: 'Non', value: false }]}
         value={animal.carnet} onSelect={v => upd('carnet', v)}
       />
 
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Maladies chroniques</Text>
-        <TextInput style={aStyles.textArea} placeholder="Ex : diabète, épilepsie, allergie cutanée…"
+        <Text style={aStyles.fieldLbl}>Maladies chroniques *</Text>
+        <TextInput style={aStyles.textArea} placeholder="Ex : diabète, épilepsie… ou &quot;Aucune&quot;"
           placeholderTextColor={COLORS.border} value={animal.maladies ?? ''}
           onChangeText={v => upd('maladies', v)} multiline numberOfLines={2} textAlignVertical="top" />
       </View>
 
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Allergies / Intolérances</Text>
-        <TextInput style={aStyles.textArea} placeholder="Ex : allergique au poulet, intolérant au lactose…"
+        <Text style={aStyles.fieldLbl}>Allergies / Intolérances *</Text>
+        <TextInput style={aStyles.textArea} placeholder="Ex : allergique au poulet… ou &quot;Aucune&quot;"
           placeholderTextColor={COLORS.border} value={animal.allergies ?? ''}
           onChangeText={v => upd('allergies', v)} multiline numberOfLines={2} textAlignVertical="top" />
       </View>
 
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Médicaments en cours</Text>
-        <TextInput style={aStyles.textArea} placeholder="Ex : Vetmedin 2.5mg matin et soir, Frontline 1x/mois…"
+        <Text style={aStyles.fieldLbl}>Médicaments en cours *</Text>
+        <TextInput style={aStyles.textArea} placeholder="Ex : Vetmedin 2.5mg matin et soir… ou &quot;Aucun&quot;"
           placeholderTextColor={COLORS.border} value={animal.medicaments ?? ''}
           onChangeText={v => upd('medicaments', v)} multiline numberOfLines={2} textAlignVertical="top" />
       </View>
@@ -350,7 +350,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
       {/* ════ 3. ALIMENTATION ════ */}
       <AnimalSection icon="🍽️" title="Alimentation" />
 
-      <ChipRow label="Type d'alimentation"
+      <ChipRow label="Type d'alimentation *"
         options={[
           { label: '🥣 Croquettes', value: 'croquettes' },
           { label: '🥩 Pâtée',     value: 'pate'       },
@@ -359,7 +359,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
         ]}
         value={animal.typeAlim} onSelect={v => upd('typeAlim', v)}
       />
-      <ChipRow label="Fréquence des repas"
+      <ChipRow label="Fréquence des repas *"
         options={[
           { label: '1×/jour',  value: '1x' },
           { label: '2×/jour',  value: '2x' },
@@ -370,7 +370,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
       />
 
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Quantité & marque</Text>
+        <Text style={aStyles.fieldLbl}>Quantité & marque *</Text>
         <TextInput style={aStyles.textInput} placeholder="Ex : 200g Royal Canin Maxi Adult matin + soir"
           placeholderTextColor={COLORS.border} value={animal.quantiteRepas ?? ''}
           onChangeText={v => upd('quantiteRepas', v)} />
@@ -380,14 +380,14 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
       <AnimalSection icon="💭" title="Caractère & comportement" />
 
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Description du caractère</Text>
+        <Text style={aStyles.fieldLbl}>Description du caractère *</Text>
         <TextInput style={aStyles.textArea}
-          placeholder="Ex : Luna est très joueuse et câline. Elle adore les promenades et cherche toujours du contact. Légèrement anxieuse lors des orages."
+          placeholder="Ex : Luna est très joueuse et câline. Elle adore les promenades…"
           placeholderTextColor={COLORS.border} value={animal.description ?? ''}
           onChangeText={v => upd('description', v)} multiline numberOfLines={3} textAlignVertical="top" />
       </View>
 
-      <ChipRow label="Avec d'autres chiens"
+      <ChipRow label="Avec d'autres chiens *"
         options={[
           { label: '✅ Oui',      value: 'oui'      },
           { label: '❌ Non',      value: 'non'      },
@@ -395,7 +395,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
         ]}
         value={animal.avecChiens} onSelect={v => upd('avecChiens', v)}
       />
-      <ChipRow label="Avec des chats"
+      <ChipRow label="Avec des chats *"
         options={[
           { label: '✅ Oui',      value: 'oui'      },
           { label: '❌ Non',      value: 'non'      },
@@ -403,7 +403,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
         ]}
         value={animal.avecChats} onSelect={v => upd('avecChats', v)}
       />
-      <ChipRow label="Avec des enfants"
+      <ChipRow label="Avec des enfants *"
         options={[
           { label: '✅ Oui',      value: 'oui'      },
           { label: '❌ Non',      value: 'non'      },
@@ -411,7 +411,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
         ]}
         value={animal.avecEnfants} onSelect={v => upd('avecEnfants', v)}
       />
-      <ChipRow label="Avec des étrangers"
+      <ChipRow label="Avec des étrangers *"
         options={[
           { label: '✅ Oui',      value: 'oui'      },
           { label: '❌ Non',      value: 'non'      },
@@ -424,31 +424,73 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
       <AnimalSection icon="📞" title="Contacts" />
 
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Vétérinaire — Nom</Text>
+        <Text style={aStyles.fieldLbl}>Vétérinaire — Nom *</Text>
         <TextInput style={aStyles.textInput} placeholder="Ex : Dr. Martin — Clinique Vétérinaire du Parc"
           placeholderTextColor={COLORS.border} value={animal.vetoNom ?? ''}
           onChangeText={v => upd('vetoNom', v)} />
       </View>
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Vétérinaire — Téléphone</Text>
+        <Text style={aStyles.fieldLbl}>Vétérinaire — Téléphone *</Text>
         <TextInput style={aStyles.textInput} placeholder="Ex : 01 23 45 67 89"
           placeholderTextColor={COLORS.border} value={animal.vetoTel ?? ''}
           onChangeText={v => upd('vetoTel', v)} keyboardType="phone-pad" />
       </View>
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Contact d'urgence — Nom</Text>
+        <Text style={aStyles.fieldLbl}>Contact d'urgence — Nom *</Text>
         <TextInput style={aStyles.textInput} placeholder="Ex : Marie (sœur)"
           placeholderTextColor={COLORS.border} value={animal.urgenceNom ?? ''}
           onChangeText={v => upd('urgenceNom', v)} />
       </View>
       <View style={aStyles.fieldBlock}>
-        <Text style={aStyles.fieldLbl}>Contact d'urgence — Téléphone</Text>
+        <Text style={aStyles.fieldLbl}>Contact d'urgence — Téléphone *</Text>
         <TextInput style={aStyles.textInput} placeholder="Ex : 06 12 34 56 78"
           placeholderTextColor={COLORS.border} value={animal.urgenceTel ?? ''}
           onChangeText={v => upd('urgenceTel', v)} keyboardType="phone-pad" />
       </View>
     </View>
   );
+};
+
+const ANIMAL_REQUIRED_FIELDS = [
+  ['nom',           'Nom'],
+  ['type',          'Type'],
+  ['race',          'Race'],
+  ['sexe',          'Sexe'],
+  ['age',           'Âge'],
+  ['poids',         'Poids'],
+  ['sterilise',     'Stérilisé / Castré'],
+  ['vaccins',       'Vaccins à jour'],
+  ['carnet',        'Carnet de santé'],
+  ['maladies',      'Maladies chroniques'],
+  ['allergies',     'Allergies / Intolérances'],
+  ['medicaments',   'Médicaments en cours'],
+  ['typeAlim',      "Type d'alimentation"],
+  ['freqRepas',     'Fréquence des repas'],
+  ['quantiteRepas', 'Quantité & marque'],
+  ['description',   'Description du caractère'],
+  ['avecChiens',    "Avec d'autres chiens"],
+  ['avecChats',     'Avec des chats'],
+  ['avecEnfants',   'Avec des enfants'],
+  ['avecEtrangers', 'Avec des étrangers'],
+  ['vetoNom',       'Vétérinaire — Nom'],
+  ['vetoTel',       'Vétérinaire — Téléphone'],
+  ['urgenceNom',    "Contact d'urgence — Nom"],
+  ['urgenceTel',    "Contact d'urgence — Téléphone"],
+];
+
+export const validateAnimaux = (animaux) => {
+  const errors = [];
+  animaux.forEach((a, i) => {
+    const label = a.nom?.trim() ? `« ${a.nom} »` : `Animal ${i + 1}`;
+    const missing = ANIMAL_REQUIRED_FIELDS
+      .filter(([field]) => {
+        const v = a[field];
+        return v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
+      })
+      .map(([, name]) => name);
+    if (missing.length > 0) errors.push(`${label} : ${missing.join(', ')}`);
+  });
+  return errors;
 };
 
 export const AnimalEditor = ({ animaux, onChange }) => {
@@ -549,14 +591,15 @@ const aStyles = StyleSheet.create({
 // Modifie les seuils ici pour changer la fourchette de couleur :
 //   low  = seuil vert → orange
 //   high = seuil orange → rouge
-const PRICE_RANGES = {
-  promenade: { low: 8,  high: 15, unit: 'heure', ref: 'Marché : 8 – 15 €/h'     },
-  pension:   { low: 15, high: 40, unit: 'nuit',  ref: 'Marché : 15 – 40 €/nuit' },
-  gardeJour: { low: 10, high: 25, unit: 'jour',  ref: 'Marché : 10 – 25 €/jour' },
+export const PRICE_RANGES = {
+  promenade: { low: 8,  high: 15, unit: 'promenade', ref: 'Marché : 8 – 15 €/promenade' },
+  pension:   { low: 15, high: 40, unit: 'nuit',       ref: 'Marché : 15 – 40 €/nuit'    },
+  gardeJour: { low: 15, high: 25, unit: 'jour',       ref: 'Marché : 15 – 25 €/jour'    },
+  visite:    { low: 8,  high: 15, unit: 'visite',     ref: 'Marché : 8 – 15 €/visite'   },
 };
 
-export const PriceInput = ({ label, icon, type, value, onChange }) => {
-  const { low, high, unit, ref } = PRICE_RANGES[type];
+export const PriceInput = ({ label, icon, type, value, onChange, range }) => {
+  const { low, high, unit, ref } = range ?? PRICE_RANGES[type];
   const num = parseFloat(value) || 0;
 
   const tier = num === 0   ? null

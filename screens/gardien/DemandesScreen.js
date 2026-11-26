@@ -1,190 +1,398 @@
 // screens/gardien/DemandesScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, Alert,
+  StyleSheet, Alert, ActivityIndicator, RefreshControl,
+  Modal, TextInput,
 } from 'react-native';
-import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
+import { COLORS, FONTS, RADIUS } from '../../lib/theme';
 import { Avatar, Badge, Card, SectionLabel } from '../../components/UI';
+import {
+  getHistoriqueGardien,
+  soumettreAvis,
+  hasAvis,
+  getDemandesOuvertes,
+  accepterDemandeOuverte,
+  getUserProfile,
+  formatPawsitter,
+  createOrGetConversation,
+  sendMessage,
+  supabase,
+} from '../../lib/supabase';
+import { calculerCompatibilite, matchColor } from '../../lib/matching';
 
-const MOCK_DEMANDES = [
-  {
-    id: 'd1',
-    statut: 'en_attente',
-    proprio: { nom: 'Sophie M.', avatar: 'SM' },
-    animal: { nom: 'Luna', emoji: '🐕', espece: 'Chien', race: 'Golden Retriever', age: '3 ans' },
-    date_debut: '2026-07-10',
-    date_fin: '2026-07-14',
-    nb_jours: 4,
-    montant: 160,
-    message: 'Bonjour ! Luna est très sociable et adore les balades. Elle mange deux fois par jour. Merci d\'avance 🐾',
-  },
-  {
-    id: 'd2',
-    statut: 'en_attente',
-    proprio: { nom: 'Marc D.', avatar: 'MD' },
-    animal: { nom: 'Milo', emoji: '🐈', espece: 'Chat', race: 'Siamois', age: '5 ans' },
-    date_debut: '2026-07-18',
-    date_fin: '2026-07-20',
-    nb_jours: 2,
-    montant: 70,
-    message: 'Milo est calme et indépendant. Il a besoin de sa pâtée le matin et d\'un peu d\'attention le soir.',
-  },
-];
+const MIN_COMMENT = 10;
 
-const HISTORIQUE = [
-  {
-    id: 'h1',
-    statut: 'acceptee',
-    proprio: { nom: 'Julie P.', avatar: 'JP' },
-    animal: { nom: 'Rocky', emoji: '🐕', espece: 'Chien' },
-    date_debut: '2026-06-15',
-    date_fin: '2026-06-18',
-    montant: 120,
-  },
-  {
-    id: 'h2',
-    statut: 'refusee',
-    proprio: { nom: 'Paul R.', avatar: 'PR' },
-    animal: { nom: 'Nala', emoji: '🐕', espece: 'Chien' },
-    date_debut: '2026-06-05',
-    date_fin: '2026-06-07',
-    montant: 80,
-  },
-];
+function AvisModal({ visible, cibleNom, onSubmit, submitting }) {
+  const [note,        setNote]        = useState(0);
+  const [commentaire, setCommentaire] = useState('');
 
-export default function DemandesScreen() {
-  const [demandes, setDemandes] = useState(MOCK_DEMANDES);
-
-  const handleAccepter = (id) => {
-    Alert.alert(
-      'Accepter la demande',
-      'Confirmer que vous acceptez cette garde ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Accepter',
-          onPress: () => setDemandes(ds => ds.filter(d => d.id !== id)),
-        },
-      ]
-    );
-  };
-
-  const handleRefuser = (id) => {
-    Alert.alert(
-      'Refuser la demande',
-      'Êtes-vous sûr de vouloir refuser cette demande ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Refuser',
-          style: 'destructive',
-          onPress: () => setDemandes(ds => ds.filter(d => d.id !== id)),
-        },
-      ]
-    );
-  };
-
-  const formatDate = (str) =>
-    new Date(str).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+  const canSubmit = note > 0 && commentaire.trim().length >= MIN_COMMENT && !submitting;
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={() => {}}>
+      <View style={av.overlay}>
+        <View style={av.sheet}>
+          <Text style={av.titre}>Évaluer {cibleNom ?? 'le propriétaire'}</Text>
+          <Text style={av.sub}>Note et commentaire obligatoires pour finaliser la garde.</Text>
+          <View style={av.stars}>
+            {[1, 2, 3, 4, 5].map(n => (
+              <TouchableOpacity key={n} onPress={() => setNote(n)} activeOpacity={0.7}>
+                <Text style={[av.star, n <= note && av.starActive]}>★</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {note > 0 && (
+            <Text style={av.noteLabel}>
+              {['', 'Décevant 😞', 'Passable 😐', 'Bien 🙂', 'Très bien 😊', 'Excellent ! 🤩'][note]}
+            </Text>
+          )}
+          <TextInput
+            style={[av.input, commentaire.length > 0 && commentaire.trim().length < MIN_COMMENT && av.inputWarn]}
+            placeholder="Décris comment s'est passée la garde… (min. 10 caractères)"
+            placeholderTextColor={COLORS.border}
+            value={commentaire}
+            onChangeText={setCommentaire}
+            multiline
+            maxLength={300}
+          />
+          {commentaire.length > 0 && commentaire.trim().length < MIN_COMMENT && (
+            <Text style={av.hint}>Encore {MIN_COMMENT - commentaire.trim().length} caractère(s) minimum</Text>
+          )}
+          <TouchableOpacity
+            style={[av.btn, !canSubmit && av.btnOff]}
+            onPress={() => { if (canSubmit) onSubmit(note, commentaire); }}
+            disabled={!canSubmit}
+            activeOpacity={0.85}
+          >
+            {submitting
+              ? <ActivityIndicator color={COLORS.white} />
+              : <Text style={av.btnText}>Envoyer mon avis ✓</Text>
+            }
+          </TouchableOpacity>
+          <Text style={av.obligatoire}>L'avis est obligatoire pour finaliser la garde.</Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
-      {/* Demandes en attente */}
-      <SectionLabel label={`Demandes en attente (${demandes.length})`} />
+const av = StyleSheet.create({
+  overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet:      { backgroundColor: COLORS.cream ?? COLORS.sand, borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 28, paddingBottom: 44 },
+  titre:      { fontSize: 20, ...FONTS.heavy, color: COLORS.ink, textAlign: 'center', marginBottom: 4 },
+  sub:        { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginBottom: 20 },
+  stars:      { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 8 },
+  star:       { fontSize: 44, color: COLORS.border },
+  starActive: { color: '#F59E0B' },
+  noteLabel:  { fontSize: 14, color: COLORS.ink, textAlign: 'center', marginBottom: 18, ...FONTS.medium },
+  input:      { backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: 12, fontSize: 14, color: COLORS.ink, minHeight: 80, textAlignVertical: 'top', marginBottom: 4 },
+  inputWarn:  { borderColor: COLORS.clay },
+  hint:       { fontSize: 12, color: COLORS.clay, marginBottom: 12, marginLeft: 2 },
+  btn:        { backgroundColor: COLORS.bark, borderRadius: RADIUS.md, padding: 15, alignItems: 'center', marginTop: 8 },
+  btnOff:     { backgroundColor: COLORS.border },
+  btnText:    { fontSize: 16, ...FONTS.heavy, color: COLORS.white },
+  obligatoire:{ fontSize: 12, color: COLORS.muted, textAlign: 'center', marginTop: 14 },
+});
 
-      {demandes.length === 0 && (
-        <Card>
-          <View style={styles.vide}>
-            <Text style={{ fontSize: 40 }}>📭</Text>
-            <Text style={styles.videTitle}>Aucune demande</Text>
-            <Text style={styles.videSub}>Les nouvelles demandes de garde apparaîtront ici.</Text>
+const formatDate = (str) =>
+  new Date(str).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+
+export default function DemandesScreen({ user }) {
+  const [historique,    setHistorique]    = useState([]);
+  const [loading,       setLoading]       = useState(true);
+  const [error,         setError]         = useState(null);
+  const [refreshing,    setRefreshing]    = useState(false);
+  const [avisGardeId,   setAvisGardeId]   = useState(null);
+  const [notées,        setNotées]        = useState({});   // { [gardeId]: true }
+  const [submittingAvis,setSubmittingAvis] = useState(false);
+  const [ouvertes,      setOuvertes]      = useState([]);   // demandes ouvertes (tous proprios)
+  const [myPawsitter,   setMyPawsitter]   = useState(null); // mon profil formaté, pour le score de compatibilité
+  const [acceptingId,   setAcceptingId]   = useState(null);
+
+  const load = useCallback(async (quiet = false) => {
+    if (!user?.id) return;
+    if (!quiet) { setLoading(true); setError(null); }
+    try {
+      const [hist, open, profile] = await Promise.all([
+        getHistoriqueGardien(user.id),
+        getDemandesOuvertes().catch(() => []),
+        getUserProfile(user.id).catch(() => null),
+      ]);
+      setHistorique(hist);
+      setOuvertes(open);
+      setMyPawsitter(profile ? formatPawsitter(profile) : null);
+      // Vérifie quelles gardes terminées ont déjà un avis
+      const terminées = (hist ?? []).filter(h => h.statut === 'terminee');
+      const checks = await Promise.all(terminées.map(h => hasAvis(h.id, user.id).catch(() => false)));
+      const map = {};
+      terminées.forEach((h, i) => { if (checks[i]) map[h.id] = true; });
+      setNotées(map);
+      // Auto-afficher le modal pour la première garde terminée non notée
+      const àNoter = terminées.find((h, i) => !checks[i]);
+      if (àNoter) setAvisGardeId(àNoter.id);
+    } catch (e) {
+      console.error('DemandesScreen load:', e);
+      const detail = [e?.message, e?.code && `(${e.code})`, e?.hint].filter(Boolean).join(' ');
+      if (!quiet) setError(detail || 'Impossible de charger les demandes. Vérifie ta connexion.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [user?.id]);
+
+  const handleSubmitAvis = async (note, commentaire) => {
+    const garde = historique.find(h => h.id === avisGardeId);
+    if (!garde || !user?.id) return;
+    setSubmittingAvis(true);
+    try {
+      await soumettreAvis(garde.id, user.id, garde.proprio_id, note, commentaire);
+      setNotées(prev => ({ ...prev, [garde.id]: true }));
+      setAvisGardeId(null);
+      Alert.alert('Merci ! 🐾', 'Ton avis a été envoyé au propriétaire.');
+    } catch {
+      Alert.alert('Erreur', 'Impossible d\'envoyer l\'avis.');
+    } finally {
+      setSubmittingAvis(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [load]);
+
+  // Realtime : rechargement silencieux quand une nouvelle garde en_attente arrive
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel('demandes-petsitter')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gardes',
+          filter: `gardien_id=eq.${user.id}` }, () => load(true))
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'gardes',
+          filter: `gardien_id=eq.${user.id}` }, () => load(true))
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, load]);
+
+  const handleAccepterOuverte = (d) => {
+    Alert.alert(
+      'Accepter cette demande',
+      `Confirmer que tu prends en charge la garde du ${formatDate(d.date_debut)} au ${formatDate(d.date_fin)} ?`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Accepter ✓',
+          onPress: async () => {
+            setAcceptingId(d.id);
+            try {
+              await accepterDemandeOuverte(d.id, user.id);
+              // Ouvre une conversation avec le propriétaire (best-effort)
+              try {
+                const convId = await createOrGetConversation(d.proprio.id, user.id, d.id);
+                await sendMessage(convId, user.id,
+                  `Bonjour ! J'ai accepté votre demande de garde du ${formatDate(d.date_debut)} au ${formatDate(d.date_fin)} 🐾 N'hésitez pas si vous avez des questions !`
+                );
+              } catch { /* la garde reste acceptée même si le message échoue */ }
+              await load(true);
+              Alert.alert('✓ Garde acceptée', 'Un message a été envoyé au propriétaire dans tes conversations.');
+            } catch {
+              Alert.alert('Erreur', 'Cette demande n\'est peut-être plus disponible. Actualise la liste.');
+              load(true);
+            } finally {
+              setAcceptingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // Demandes ouvertes triées par compatibilité avec mon profil (les plus adaptées en premier)
+  const ouvertesScored = ouvertes.map(d => {
+    const { pct, blocages } = (myPawsitter && d.proprio?.onboarding)
+      ? calculerCompatibilite(d.proprio.onboarding, myPawsitter)
+      : { pct: null, blocages: [] };
+    return { ...d, pct, blocages };
+  }).sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+
+  if (loading) return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color={COLORS.bark} />
+    </View>
+  );
+
+  if (error) return (
+    <View style={styles.center}>
+      <Text style={{ fontSize: 40, marginBottom: 14 }}>📡</Text>
+      <Text style={styles.errorTitle}>Erreur de chargement</Text>
+      <Text style={styles.errorSub}>{error}</Text>
+      <TouchableOpacity style={styles.retryBtn} onPress={() => load()}>
+        <Text style={styles.retryText}>Réessayer</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
+  // ── Revenus ─────────────────────────────────────────────────────
+  const gardesActives  = historique.filter(h => h.statut !== 'refusee');
+  const totalPaye      = gardesActives.filter(h => h.paiement_statut === 'paye')
+                                      .reduce((s, h) => s + (h.montant ?? 0), 0);
+  const totalAttente   = gardesActives.filter(h => h.paiement_statut !== 'paye')
+                                      .reduce((s, h) => s + (h.montant ?? 0), 0);
+  const nbGardes       = gardesActives.length;
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => { setRefreshing(true); load(true); }}
+          tintColor={COLORS.bark}
+        />
+      }
+    >
+      {/* ── Carte revenus ── */}
+      {(historique.length > 0 || true) && (
+        <Card style={styles.revenusCard}>
+          <Text style={styles.revenusTitle}>Mes revenus</Text>
+          <View style={styles.revenusRow}>
+            <View style={styles.revenuItem}>
+              <Text style={styles.revenuVal}>{totalPaye} €</Text>
+              <Text style={styles.revenuLabel}>Encaissés</Text>
+            </View>
+            <View style={styles.revenuSep} />
+            <View style={styles.revenuItem}>
+              <Text style={[styles.revenuVal, { color: COLORS.moss }]}>{totalAttente} €</Text>
+              <Text style={styles.revenuLabel}>À recevoir</Text>
+            </View>
+            <View style={styles.revenuSep} />
+            <View style={styles.revenuItem}>
+              <Text style={styles.revenuVal}>{nbGardes}</Text>
+              <Text style={styles.revenuLabel}>Garde{nbGardes > 1 ? 's' : ''}</Text>
+            </View>
           </View>
         </Card>
       )}
 
-      {demandes.map(d => (
-        <Card key={d.id} style={styles.demandeCard}>
-          {/* Header proprio + animal */}
-          <View style={styles.demandeHeader}>
-            <Avatar initials={d.proprio.avatar} size={40} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.propreNom}>{d.proprio.nom}</Text>
-              <Text style={styles.animalLine}>
-                {d.animal.emoji} {d.animal.nom} · {d.animal.race ?? d.animal.espece} · {d.animal.age}
-              </Text>
-            </View>
-            <View style={styles.montantPill}>
-              <Text style={styles.montant}>{d.montant} €</Text>
-            </View>
-          </View>
+      {/* ── Demandes ouvertes (publiées par des propriétaires, non attribuées) ── */}
+      {ouvertesScored.length > 0 && (
+        <>
+          <SectionLabel label={`🔍 Demandes disponibles (${ouvertesScored.length})`} />
+          {ouvertesScored.map(d => {
+            const accepting = acceptingId === d.id;
+            const colors = d.pct != null ? matchColor(d.pct) : null;
+            return (
+              <Card key={d.id} style={styles.demandeCard}>
+                <View style={styles.demandeHeader}>
+                  <Avatar initials={d.proprio.nom?.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) ?? '??'} size={40} />
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.propreNom}>{d.proprio.nom}</Text>
+                    <Text style={styles.animalLine}>
+                      {d.proprio.ville ? `📍 ${d.proprio.ville}` : ''}
+                      {d.animaux?.length > 0
+                        ? `${d.proprio.ville ? ' · ' : ''}${d.animaux.map(a => `${a.emoji} ${a.nom}`).join(', ')}`
+                        : (d.proprio.ville ? '' : '🐾 Animal non précisé')}
+                    </Text>
+                  </View>
+                  {d.pct != null && (
+                    <View style={[styles.ouverteMatchBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+                      <Text style={[styles.ouverteMatchText, { color: colors.text }]}>{d.pct}%</Text>
+                    </View>
+                  )}
+                </View>
 
-          {/* Dates */}
-          <View style={styles.datesBox}>
-            <View style={styles.dateItem}>
-              <Text style={styles.dateLabel}>Début</Text>
-              <Text style={styles.dateVal}>{formatDate(d.date_debut)}</Text>
-            </View>
-            <View style={styles.dateSep} />
-            <View style={styles.dateItem}>
-              <Text style={styles.dateLabel}>Fin</Text>
-              <Text style={styles.dateVal}>{formatDate(d.date_fin)}</Text>
-            </View>
-            <View style={styles.dateSep} />
-            <View style={styles.dateItem}>
-              <Text style={styles.dateLabel}>Durée</Text>
-              <Text style={styles.dateVal}>{d.nb_jours} jours</Text>
-            </View>
-          </View>
+                <View style={styles.datesBox}>
+                  <View style={styles.dateItem}>
+                    <Text style={styles.dateLabel}>Début</Text>
+                    <Text style={styles.dateVal}>{formatDate(d.date_debut)}</Text>
+                  </View>
+                  <View style={styles.dateSep} />
+                  <View style={styles.dateItem}>
+                    <Text style={styles.dateLabel}>Fin</Text>
+                    <Text style={styles.dateVal}>{formatDate(d.date_fin)}</Text>
+                  </View>
+                </View>
 
-          {/* Message proprio */}
-          {d.message && (
-            <View style={styles.messageBox}>
-              <Text style={styles.messageText}>"{d.message}"</Text>
-            </View>
-          )}
+                {d.message ? (
+                  <View style={styles.messageBox}>
+                    <Text style={styles.messageText}>"{d.message}"</Text>
+                  </View>
+                ) : null}
 
-          {/* Actions */}
-          <View style={styles.actions}>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.refuserBtn]}
-              onPress={() => handleRefuser(d.id)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.refuserText}>✗ Refuser</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.actionBtn, styles.accepterBtn]}
-              onPress={() => handleAccepter(d.id)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.accepterText}>✓ Accepter</Text>
-            </TouchableOpacity>
-          </View>
-        </Card>
-      ))}
+                {d.blocages?.length > 0 && d.blocages.map((b, i) => (
+                  <Text key={i} style={styles.ouverteBlocage}>{b}</Text>
+                ))}
 
-      {/* Historique */}
-      <SectionLabel label="Historique" />
-      {HISTORIQUE.map(h => (
-        <Card key={h.id} style={styles.histCard}>
-          <View style={styles.histRow}>
-            <Avatar initials={h.proprio.avatar} size={34} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={styles.histNom}>{h.proprio.nom} · {h.animal.emoji} {h.animal.nom}</Text>
-              <Text style={styles.histDates}>
-                {formatDate(h.date_debut)} → {formatDate(h.date_fin)} · {h.montant} €
-              </Text>
-            </View>
-            <Badge
-              label={h.statut === 'acceptee' ? '✓ Acceptée' : '✗ Refusée'}
-              color={h.statut === 'acceptee' ? 'ok' : 'warn'}
-            />
-          </View>
-        </Card>
-      ))}
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.accepterBtn, accepting && styles.actionBtnDisabled, { marginTop: 4 }]}
+                  onPress={() => handleAccepterOuverte(d)}
+                  disabled={accepting}
+                  activeOpacity={0.8}
+                >
+                  {accepting
+                    ? <ActivityIndicator size="small" color={COLORS.white} />
+                    : <Text style={styles.accepterText}>✓ Accepter cette garde</Text>
+                  }
+                </TouchableOpacity>
+              </Card>
+            );
+          })}
+        </>
+      )}
 
+
+      {/* ── Historique ── */}
+      {historique.length > 0 && (
+        <>
+          <SectionLabel label="Historique" />
+          {historique.map(h => (
+            <Card key={h.id} style={styles.histCard}>
+              <View style={styles.histRow}>
+                <Avatar initials={h.proprio.avatar} size={34} />
+                <View style={{ flex: 1, marginLeft: 10 }}>
+                  <Text style={styles.histNom}>
+                    {h.proprio.nom}
+                    {h.animal ? ` · ${h.animal.emoji} ${h.animal.nom}` : ''}
+                  </Text>
+                  <Text style={styles.histDates}>
+                    {formatDate(h.date_debut)} → {formatDate(h.date_fin)}
+                    {h.montant ? ` · ${h.montant} €` : ''}
+                  </Text>
+                </View>
+                <Badge
+                  label={
+                    h.statut === 'en_cours'  ? '⏳ En cours' :
+                    h.statut === 'refusee'   ? '✗ Refusée'  :
+                    h.statut === 'terminee'  ? '✓ Terminée'  :
+                                              '✓ Acceptée'
+                  }
+                  color={
+                    h.statut === 'refusee' ? 'warn' :
+                    h.statut === 'en_cours' ? 'info' : 'ok'
+                  }
+                />
+              </View>
+              {h.statut === 'terminee' && (
+                notées[h.id]
+                  ? <Text style={styles.dejaNoteText}>⭐ Avis envoyé</Text>
+                  : <TouchableOpacity
+                      style={styles.noterBtn}
+                      onPress={() => setAvisGardeId(h.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.noterText}>⭐ Noter le propriétaire</Text>
+                    </TouchableOpacity>
+              )}
+            </Card>
+          ))}
+        </>
+      )}
+
+      <AvisModal
+        visible={!!avisGardeId}
+        cibleNom={historique.find(h => h.id === avisGardeId)?.proprio?.nom}
+        onSubmit={handleSubmitAvis}
+        submitting={submittingAvis}
+      />
     </ScrollView>
   );
 }
@@ -192,8 +400,13 @@ export default function DemandesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.sand },
   content:   { padding: 16, paddingBottom: 100 },
+  center:     { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32 },
+  errorTitle: { fontSize: 16, ...FONTS.heavy, color: COLORS.ink, marginBottom: 6, textAlign: 'center' },
+  errorSub:   { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginBottom: 20, lineHeight: 19 },
+  retryBtn:   { backgroundColor: COLORS.bark, borderRadius: RADIUS.md, paddingHorizontal: 24, paddingVertical: 12 },
+  retryText:  { fontSize: 14, ...FONTS.bold, color: COLORS.white },
 
-  demandeCard: { marginBottom: 16 },
+  demandeCard:   { marginBottom: 16 },
   demandeHeader: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 14 },
   propreNom:     { fontSize: 15, ...FONTS.bold, color: COLORS.ink, marginBottom: 3 },
   animalLine:    { fontSize: 13, color: COLORS.muted },
@@ -213,19 +426,36 @@ const styles = StyleSheet.create({
   },
   messageText: { fontSize: 13, color: COLORS.ink, lineHeight: 19, fontStyle: 'italic' },
 
-  actions:     { flexDirection: 'row', gap: 10 },
-  actionBtn:   { flex: 1, borderRadius: RADIUS.md, padding: 12, alignItems: 'center' },
-  refuserBtn:  { backgroundColor: COLORS.warnBg, borderWidth: 1.5, borderColor: COLORS.warnBorder },
-  accepterBtn: { backgroundColor: COLORS.moss },
-  refuserText: { fontSize: 14, ...FONTS.bold, color: COLORS.clay },
-  accepterText:{ fontSize: 14, ...FONTS.bold, color: COLORS.white },
+  actions:          { flexDirection: 'row', gap: 10 },
+  actionBtn:        { flex: 1, borderRadius: RADIUS.md, padding: 12, alignItems: 'center' },
+  actionBtnDisabled:{ opacity: 0.6 },
+  refuserBtn:       { backgroundColor: COLORS.warnBg, borderWidth: 1.5, borderColor: COLORS.warnBorder },
+  accepterBtn:      { backgroundColor: COLORS.moss },
+  refuserText:      { fontSize: 14, ...FONTS.bold, color: COLORS.clay },
+  accepterText:     { fontSize: 14, ...FONTS.bold, color: COLORS.white },
 
-  histCard: { marginBottom: 10 },
-  histRow:  { flexDirection: 'row', alignItems: 'center' },
-  histNom:  { fontSize: 14, ...FONTS.bold, color: COLORS.ink, marginBottom: 3 },
-  histDates:{ fontSize: 12, color: COLORS.muted },
+  histCard:  { marginBottom: 10 },
+  histRow:   { flexDirection: 'row', alignItems: 'center' },
+  histNom:   { fontSize: 14, ...FONTS.bold, color: COLORS.ink, marginBottom: 3 },
+  histDates: { fontSize: 12, color: COLORS.muted },
 
   vide:      { alignItems: 'center', paddingVertical: 24 },
   videTitle: { fontSize: 16, ...FONTS.bold, color: COLORS.ink, marginTop: 12 },
   videSub:   { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginTop: 6, lineHeight: 18 },
+
+  noterBtn:      { marginTop: 10, backgroundColor: COLORS.warm ?? '#FFF4E6', borderWidth: 1.5, borderColor: COLORS.bark, borderRadius: RADIUS.md, padding: 10, alignItems: 'center' },
+  noterText:     { fontSize: 13, ...FONTS.bold, color: COLORS.bark },
+  dejaNoteText:  { marginTop: 8, fontSize: 13, color: COLORS.moss, textAlign: 'center', ...FONTS.medium },
+
+  revenusCard:   { marginBottom: 20 },
+  revenusTitle:  { fontSize: 13, ...FONTS.bold, color: COLORS.muted, marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.6 },
+  revenusRow:    { flexDirection: 'row', alignItems: 'center' },
+  revenuItem:    { flex: 1, alignItems: 'center' },
+  revenuVal:     { fontSize: 26, ...FONTS.heavy, color: COLORS.bark, marginBottom: 4 },
+  revenuLabel:   { fontSize: 12, color: COLORS.muted, ...FONTS.medium },
+  revenuSep:     { width: 1, height: 44, backgroundColor: COLORS.border, marginHorizontal: 8 },
+
+  ouverteMatchBadge: { borderWidth: 1.5, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 4 },
+  ouverteMatchText:  { fontSize: 13, ...FONTS.heavy },
+  ouverteBlocage:    { fontSize: 12, color: COLORS.clay, marginTop: 4 },
 });

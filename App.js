@@ -1,13 +1,24 @@
 // App.js — Point d'entrée PawWatch
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image, ImageBackground } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, StatusBar, Image, ImageBackground, Appearance } from 'react-native';
+import * as SystemUI from 'expo-system-ui';
+
+// Forcer le mode clair — l'app n'a pas de thème sombre
+Appearance.setColorScheme?.('light');
+SystemUI.setBackgroundColorAsync('#FAF8F4');
+import { useFonts } from 'expo-font';
+// Stripe n'a pas de module web — on importe conditionnellement pour éviter le crash Netlify
+const STRIPE_PUBLISHABLE_KEY = 'pk_live_51Hk4pOLhKS8wkkRQYe1F2McJyznT9NLPWRfAEN8Z9roEDrqYSVPT60a1JyKKxX87i1vpKO7XbaV5kPEoJ7yVMYWF00Dh7kYEEE';
+const StripeProvider = Platform.OS !== 'web'
+  ? require('@stripe/stripe-react-native').StripeProvider
+  : ({ children }) => children;
 
 const LEDGER_ICON = require('./assets/ledger-icon.png');
 const MSG_ICON    = require('./assets/msg.png');
 const APP_LOGO    = require('./assets/logo.png');
 const PASTEL_BG   = require('./assets/pastel.png');
 import { COLORS, FONTS, RADIUS } from './lib/theme';
-import { getUser, signOut }       from './lib/supabase';
+import { supabase, getUser, signOut, getGardesEnCours, getConversations, sendMessage, createOrGetConversation, markMessagesRead } from './lib/supabase';
 import { useNotifications, scheduleJournalReminder } from './hooks/useNotifications';
 
 // Écrans
@@ -23,49 +34,50 @@ import SearchPetsitterScreen from './screens/proprietaire/SearchPetsitterScreen'
 import MessagesScreen        from './screens/shared/MessagesScreen';
 import ChatScreen            from './screens/shared/ChatScreen';
 import OnboardingScreen      from './screens/shared/OnboardingScreen';
+import AdminScreen           from './screens/admin/AdminScreen';
 
-// Conversations demo pré-peuplées
-const DEMO_CONVERSATIONS = [
-  {
-    id: 'conv_demo_1',
-    partnerName: 'Emma Rousseau',
-    partnerSpecialite: '🐕 Dogsitter · 🐈 Catsitter · Pension',
-    animalNom: null,
-    unread: 2,
-    messages: [
-      { id: 'er1', text: "Bonjour ! Je serais ravie de garder votre animal 🐾", from: 'them', timestamp: new Date(Date.now() - 7_200_000) },
-      { id: 'er2', text: "Il est actif ? Il aime les longues promenades ?", from: 'them', timestamp: new Date(Date.now() - 7_140_000) },
-    ],
-  },
-  {
-    id: 'conv_demo_2',
-    partnerName: 'Thomas R.',
-    partnerSpecialite: '🐕 Dogsitter · 🐈 Catsitter',
-    animalNom: null,
-    unread: 0,
-    messages: [
-      { id: 'tr1', text: "Je confirme la garde du 20 au 23 juillet ✅", from: 'them', timestamp: new Date(Date.now() - 86_400_000) },
-      { id: 'tr2', text: "Parfait, merci ! On se retrouve à 9h alors.", from: 'me', timestamp: new Date(Date.now() - 86_340_000) },
-    ],
-  },
-];
-
-// Données de garde mock (remplace par un vrai fetch Supabase)
-const MOCK_GARDE = {
-  id: 'garde-001',
-  date_debut: '2026-06-23', date_fin: '2026-06-26',
-  animaux: [
-    { id: 'animal-1', nom: 'Luna',  type: 'chien', race: 'Golden Retriever' },
-    { id: 'animal-2', nom: 'Minou', type: 'chat',  race: 'Maine Coon'       },
-  ],
-  users:    { nom: 'Sophie M.' },
-  journaux: [],
-};
 
 // ─── Paw SVG en texte emoji ───────────────────────────────────────
 const PawIcon = () => <Text style={{ fontSize: 20 }}>🐾</Text>;
 
+// ─── Profil simplifié pour l'admin ───────────────────────────────
+function AdminProfilView({ user, onLogout }) {
+  const nom   = user?.user_metadata?.nom ?? 'Admin';
+  const email = user?.email ?? '';
+  const initiales = nom.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  return (
+    <View style={{ flex: 1, backgroundColor: COLORS.sand }}>
+      <View style={{ alignItems: 'center', paddingVertical: 32, paddingHorizontal: 24, backgroundColor: COLORS.ink }}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: COLORS.bark, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+          <Text style={{ fontSize: 26, fontWeight: '800', color: COLORS.white }}>{initiales}</Text>
+        </View>
+        <Text style={{ fontSize: 20, fontWeight: '800', color: COLORS.white, marginBottom: 4 }}>{nom}</Text>
+        <Text style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', marginBottom: 8 }}>{email}</Text>
+        <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 99, paddingHorizontal: 14, paddingVertical: 4 }}>
+          <Text style={{ fontSize: 13, color: COLORS.white, fontWeight: '700' }}>🛡️ Administrateur</Text>
+        </View>
+      </View>
+      <View style={{ flex: 1, padding: 20 }}>
+        <TouchableOpacity
+          onPress={onLogout}
+          style={{ backgroundColor: '#EF4444', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 24 }}
+          activeOpacity={0.8}
+        >
+          <Text style={{ fontSize: 16, fontWeight: '800', color: COLORS.white }}>Se déconnecter</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+// L'onboarding utilise "pawsitter" mais tout le reste de l'app attend "petsitter"
+const normRole = (r) => (r === 'pawsitter' ? 'petsitter' : (r ?? 'proprietaire'));
+
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    'KoalaStation': require('./assets/fonts/KoalaStation.ttf'),
+  });
+
   const [user,              setUser]              = useState(null);
   const [role,              setRole]              = useState(null);
   const [activeTab,         setActiveTab]         = useState('journal');
@@ -73,23 +85,69 @@ export default function App() {
   const [journalAnimal,          setJournalAnimal]          = useState(null);
   const [journauxCompletes,      setJournauxCompletes]      = useState([]);
   const [profilPetsitterComplet, setProfilPetsitterComplet] = useState(false);
+  const [profilInitialTab, setProfilInitialTab] = useState('profil');
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingAnswers, setOnboardingAnswers] = useState(null);
+  const [showEmailConfirm, setShowEmailConfirm]   = useState(false);
+  const [pendingEmail,     setPendingEmail]        = useState('');
+
+  // ── Garde en cours ──
+  const [gardeEnCours, setGardeEnCours] = useState(null);
 
   // ── Messagerie ──
-  const [conversations,        setConversations]        = useState(DEMO_CONVERSATIONS);
+  const [conversations,        setConversations]        = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
   const activeConversation = conversations.find(c => c.id === activeConversationId) ?? null;
 
   // Hook notifications
   useNotifications(user?.id);
 
+  // Realtime : badge messages mis à jour dès qu'un message arrive
   useEffect(() => {
-    // Vérifie si un utilisateur est déjà connecté
+    if (!user?.id) return;
+    const channel = supabase
+      .channel('global-msg-badge')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        if (payload.new.from_id !== user.id) {
+          getConversations(user.id).then(setConversations).catch(() => {});
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id]);
+
+  // Realtime : proprio voit quand son petsitter accepte (statut → en_cours)
+  useEffect(() => {
+    if (!user?.id || role !== 'proprietaire') return;
+    const channel = supabase
+      .channel('gardes-status')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'gardes',
+          filter: `proprio_id=eq.${user.id}` }, (payload) => {
+        const s = payload.new?.statut;
+        if (s === 'en_cours') {
+          getGardesEnCours(user.id, 'proprietaire')
+            .then(data => { if (data?.length > 0) setGardeEnCours(data[0]); })
+            .catch(() => {});
+        } else if (s === 'refusee') {
+          setGardeEnCours(null);
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, role]);
+
+  useEffect(() => {
     getUser().then(u => {
       if (u) {
         setUser(u);
-        // TODO: récupérer le rôle depuis Supabase users table
-        setRole(u.user_metadata?.role ?? 'proprietaire');
+        const r = normRole(u.user_metadata?.role);
+        setRole(r);
+        // Charger la garde en cours
+        getGardesEnCours(u.id, r).then(data => {
+          if (data && data.length > 0) setGardeEnCours(data[0]);
+        }).catch(() => {});
+        // Charger les conversations
+        getConversations(u.id).then(setConversations).catch(() => {});
       }
       setLoading(false);
     });
@@ -97,19 +155,44 @@ export default function App() {
 
   const handleLogin = (u, isNewUser = false) => {
     setUser(u);
-    setRole(u.user_metadata?.role ?? 'proprietaire');
+    const r = normRole(u.user_metadata?.role);
+    setRole(r);
     if (isNewUser && !u.user_metadata?.isAdmin) {
       setShowOnboarding(true);
+    } else if (!isNewUser && u.id && !u.user_metadata?.isAdmin) {
+      // Charger les données Supabase après connexion
+      getGardesEnCours(u.id, r).then(data => {
+        if (data && data.length > 0) setGardeEnCours(data[0]);
+      }).catch(() => {});
+      getConversations(u.id).then(setConversations).catch(() => {});
     }
-    // Planifier rappel quotidien si petsitter
-    if (u.user_metadata?.role === 'petsitter') {
-      scheduleJournalReminder(u.user_metadata?.nom ?? 'Petsitter').catch(() => {});
+    if (r === 'petsitter') {
+      scheduleJournalReminder(u.user_metadata?.nom ?? 'Pawsitter').catch(() => {});
     }
   };
 
-  const handleOnboardingComplete = (answers) => {
-    if (answers?.role) setRole(answers.role);
+  const handleOnboardingComplete = (answers, supabaseUser, session) => {
+    if (answers?.role) setRole(normRole(answers.role));
+    setOnboardingAnswers(answers);
     setShowOnboarding(false);
+
+    // Si la confirmation email est désactivée, signUp renvoie déjà une session
+    // → on connecte l'utilisateur directement, pas d'écran "vérifie ta boîte mail".
+    if (session && supabaseUser) {
+      setUser(supabaseUser);
+      const r = normRole(supabaseUser.user_metadata?.role ?? answers?.role);
+      setRole(r);
+      getGardesEnCours(supabaseUser.id, r).then(data => {
+        if (data && data.length > 0) setGardeEnCours(data[0]);
+      }).catch(() => {});
+      getConversations(supabaseUser.id).then(setConversations).catch(() => {});
+      return;
+    }
+
+    if (answers?.email) {
+      setPendingEmail(answers.email);
+      setShowEmailConfirm(true);
+    }
   };
 
   const handleLogout = async () => {
@@ -119,48 +202,62 @@ export default function App() {
     setActiveTab('journal');
   };
 
-  // Crée une conversation après confirmation d'une garde avec un petsitter
-  const handleMatch = (petsitter) => {
-    const convId = `conv_${Date.now()}`;
-    const newConv = {
-      id: convId,
-      partnerName: petsitter.nom,
-      partnerSpecialite: petsitter.animaux?.join(' · ') ?? 'Petsitter',
-      animalNom: null,
-      unread: 1,
-      messages: [
-        {
+  // Crée une conversation Supabase après confirmation d'une garde avec un petsitter
+  const handleMatch = async (petsitter, messageText) => {
+    if (!user?.id) return;
+    try {
+      const convId = await createOrGetConversation(user.id, petsitter.id, gardeEnCours?.id ?? null);
+      // Premier message envoyé par le proprio (from_id = user.id, conforme à la RLS msg_insert)
+      await sendMessage(convId, user.id,
+        messageText ?? `Bonjour ! Je viens de vous envoyer une demande de garde 🐾 N'hésitez pas à me répondre ici !`
+      );
+      // Recharger les conversations
+      const updated = await getConversations(user.id);
+      setConversations(updated);
+      setActiveConversationId(convId);
+      setActiveTab('messages');
+    } catch {
+      // Fallback local si Supabase échoue
+      const convId = `conv_${Date.now()}`;
+      setConversations(prev => [{
+        id: convId,
+        partnerName: petsitter.nom,
+        partnerSpecialite: petsitter.animaux?.join(' · ') ?? 'Pawsitter',
+        animalNom: null,
+        unread: 1,
+        messages: [{
           id: `msg_${Date.now()}`,
-          text: `Bonjour ! J'ai bien reçu votre demande de garde. Je serais ravi(e) de m'occuper de votre compagnon 🐾 N'hésitez pas à me poser des questions !`,
+          text: `Bonjour ! J'ai bien reçu votre demande de garde. Je serais ravi(e) de m'occuper de votre compagnon 🐾`,
           from: 'them',
           timestamp: new Date(),
-        },
-      ],
-    };
-    setConversations(prev => [newConv, ...prev]);
-    setActiveConversationId(convId);
-    setActiveTab('messages');
+        }],
+      }, ...prev]);
+      setActiveConversationId(convId);
+      setActiveTab('messages');
+    }
   };
 
-  // Ajoute un message dans une conversation (from = 'me' | 'them')
-  const handleSendMessage = (convId, text, from = 'me') => {
+  // Envoie un message — sauvegarde dans Supabase puis met à jour l'état local
+  const handleSendMessage = async (convId, text, from = 'me') => {
     const newMsg = {
       id: `msg_${Date.now()}_${Math.floor(Math.random() * 9999)}`,
       text,
       from,
       timestamp: new Date(),
     };
+    // Mise à jour optimiste immédiate
     setConversations(prev => prev.map(c => {
       if (c.id !== convId) return c;
       return {
         ...c,
         messages: [...c.messages, newMsg],
-        // badge non-lu seulement si message entrant et conversation pas ouverte
-        unread: from === 'them' && activeConversationId !== convId
-          ? (c.unread || 0) + 1
-          : c.unread,
+        unread: from === 'them' && activeConversationId !== convId ? (c.unread || 0) + 1 : c.unread,
       };
     }));
+    // Persistence Supabase (silencieusement)
+    if (user?.id && from === 'me' && !convId.startsWith('conv_')) {
+      sendMessage(convId, user.id, text).catch(() => {});
+    }
   };
 
   if (loading) return (
@@ -174,10 +271,28 @@ export default function App() {
     <LoginScreen onLogin={handleLogin} />
   );
 
+  if (showEmailConfirm) return (
+    <View style={styles.confirmScreen}>
+      <Text style={styles.confirmEmoji}>📬</Text>
+      <Text style={styles.confirmTitle}>Vérifie ta boîte mail !</Text>
+      <Text style={styles.confirmSub}>
+        Un email de confirmation a été envoyé à{'\n'}
+        <Text style={styles.confirmEmail}>{pendingEmail}</Text>
+      </Text>
+      <Text style={styles.confirmHint}>
+        Clique sur le lien dans l'email pour activer ton compte, puis reviens te connecter.
+      </Text>
+      <TouchableOpacity style={styles.confirmBtn} onPress={() => { setShowEmailConfirm(false); setUser(null); setRole(null); }}>
+        <Text style={styles.confirmBtnText}>Aller me connecter →</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   if (showOnboarding) return (
     <OnboardingScreen
       user={user}
       onComplete={handleOnboardingComplete}
+      onSkip={() => { setShowOnboarding(false); setUser(null); setRole(null); }}
     />
   );
 
@@ -187,13 +302,22 @@ export default function App() {
   const journalTab = { id: 'journal', image: LEDGER_ICON, label: 'Journal' };
   const messagesTab = { id: 'messages', image: MSG_ICON, label: 'Messages', badge: msgUnread > 0 ? msgUnread : null };
 
-  const tabs = role === 'proprietaire'
+  const adminTab = { id: 'admin', icon: '🛠', label: 'Admin' };
+
+  const tabs = user?.user_metadata?.isAdmin
     ? [
         journalTab,
-        { id: 'chercher', icon: '🔍', label: 'Chercher' },
         messagesTab,
-        { id: 'notifs',   icon: '🔔', label: 'Notifs'   },
-        { id: 'profil',   icon: '👤', label: 'Profil'   },
+        adminTab,
+        { id: 'profil', icon: '👤', label: 'Profil' },
+      ]
+    : role === 'proprietaire'
+    ? [
+        journalTab,
+        { id: 'chercher',  icon: '🔍', label: 'Chercher'  },
+        { id: 'paiement',  icon: '💳', label: 'Paiement'  },
+        messagesTab,
+        { id: 'profil',    icon: '👤', label: 'Profil'    },
       ]
     : [
         journalTab,
@@ -209,7 +333,7 @@ export default function App() {
     if (journalAnimal) {
       return (
         <JournalFormScreen
-          garde={{ ...MOCK_GARDE, animaux: journalAnimal }}
+          garde={{ ...gardeEnCours, animaux: journalAnimal }}
           user={user}
           onBack={() => setJournalAnimal(null)}
           onSubmit={() => {
@@ -221,9 +345,10 @@ export default function App() {
     }
     return (
       <JournalListScreen
-        garde={MOCK_GARDE}
+        garde={gardeEnCours}
         journauxCompletes={journauxCompletes}
         onSelectAnimal={setJournalAnimal}
+        user={user}
       />
     );
   };
@@ -233,7 +358,12 @@ export default function App() {
       return (
         <ChatScreen
           conversation={activeConversation}
-          onBack={() => setActiveConversationId(null)}
+          userId={user?.id}
+          onBack={() => {
+            setActiveConversationId(null);
+            // Recharger les conversations pour mettre à jour les badges non-lus
+            if (user?.id) getConversations(user.id).then(setConversations).catch(() => {});
+          }}
           onSend={handleSendMessage}
         />
       );
@@ -242,33 +372,47 @@ export default function App() {
       <MessagesScreen
         conversations={conversations}
         onOpenChat={(conv) => {
-          // Marquer comme lu à l'ouverture
           setConversations(prev => prev.map(c =>
             c.id === conv.id ? { ...c, unread: 0 } : c
           ));
           setActiveConversationId(conv.id);
+          // Marquer comme lu dans Supabase
+          if (user?.id && !conv.id.startsWith('conv_')) {
+            markMessagesRead(conv.id, user.id).catch(() => {});
+          }
         }}
       />
     );
   };
 
   const renderScreen = () => {
+    // Admin overlay — visible quel que soit le rôle sélectionné
+    if (user?.user_metadata?.isAdmin && activeTab === 'admin') {
+      return <AdminScreen onLogout={handleLogout} />;
+    }
+    // Admin profil : vue dédiée simple (ProfilScreen est conçu pour les petsitters standards)
+    if (user?.user_metadata?.isAdmin && activeTab === 'profil') {
+      return <AdminProfilView user={user} onLogout={handleLogout} />;
+    }
     if (role === 'proprietaire') {
-      if (activeTab === 'journal')  return <JournalScreen  garde={MOCK_GARDE} user={user} />;
+      if (activeTab === 'journal')  return <JournalScreen  garde={gardeEnCours} user={user} onGardeTerminee={() => setGardeEnCours(null)} />;
       if (activeTab === 'chercher') return <SearchPetsitterScreen user={user} onMatch={handleMatch} />;
+      if (activeTab === 'paiement') return <PaiementScreen garde={gardeEnCours} user={user} />;
       if (activeTab === 'messages') return renderMessages();
-      if (activeTab === 'notifs')   return <NotificationsScreen />;
-      if (activeTab === 'profil')   return <ProfilScreen user={user} onLogout={handleLogout} />;
+      if (activeTab === 'profil')   return <ProfilScreen user={user} onLogout={handleLogout} initialData={onboardingAnswers} />;
     }
     if (role === 'petsitter') {
       if (activeTab === 'journal')  return renderJournalPetsitter();
       if (activeTab === 'messages') return renderMessages();
-      if (activeTab === 'demandes') return <DemandesScreen profilComplet={profilPetsitterComplet} />;
+      if (activeTab === 'demandes') return <DemandesScreen user={user} />;
       if (activeTab === 'notifs')   return <NotificationsScreen />;
       if (activeTab === 'profil')   return (
         <ProfilScreen user={user} onLogout={handleLogout}
           profilComplet={profilPetsitterComplet}
-          onProfilComplet={() => setProfilPetsitterComplet(true)} />
+          onProfilComplet={() => setProfilPetsitterComplet(true)}
+          initialData={onboardingAnswers}
+          initialTab={profilInitialTab}
+          onInitialTabConsumed={() => setProfilInitialTab('profil')} />
       );
     }
   };
@@ -277,6 +421,10 @@ export default function App() {
   const msgUnreadTotal = conversations.reduce((s, c) => s + (c.unread || 0), 0);
 
   return (
+    <StripeProvider
+      publishableKey={STRIPE_PUBLISHABLE_KEY}
+      merchantIdentifier="merchant.com.pawwatch.app"
+    >
     <>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.white} />
       <ImageBackground source={PASTEL_BG} style={styles.app} imageStyle={styles.appBg}>
@@ -328,7 +476,7 @@ export default function App() {
         {isPetsitterRole && !profilPetsitterComplet && (
           <TouchableOpacity
             style={styles.profilGate}
-            onPress={() => setActiveTab('profil')}
+            onPress={() => { setProfilInitialTab('modifier'); setActiveTab('profil'); }}
             activeOpacity={0.85}
           >
             <Text style={styles.profilGateIcon}>⚠️</Text>
@@ -375,6 +523,7 @@ export default function App() {
         </View>
       </ImageBackground>
     </>
+    </StripeProvider>
   );
 }
 
@@ -385,8 +534,17 @@ const styles = StyleSheet.create({
   appBg: { resizeMode: 'cover', opacity: 0.07 },
 
   splash:      { flex: 1, backgroundColor: COLORS.sand, alignItems: 'center', justifyContent: 'center' },
-  splashLogo:  { width: 120, height: 120, marginBottom: 16 },
+  splashLogo:  { width: 240, height: 240, marginBottom: 16 },
   splashTitle: { fontSize: 32, ...FONTS.heavy, color: COLORS.ink },
+
+  confirmScreen: { flex: 1, backgroundColor: COLORS.sand, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  confirmEmoji:  { fontSize: 72, marginBottom: 20 },
+  confirmTitle:  { fontSize: 26, ...FONTS.heavy, color: COLORS.ink, textAlign: 'center', marginBottom: 16 },
+  confirmSub:    { fontSize: 15, color: COLORS.muted, textAlign: 'center', lineHeight: 24, marginBottom: 12 },
+  confirmEmail:  { color: COLORS.bark, ...FONTS.bold },
+  confirmHint:   { fontSize: 13, color: COLORS.muted, textAlign: 'center', lineHeight: 20, marginBottom: 36 },
+  confirmBtn:    { backgroundColor: COLORS.ink, borderRadius: RADIUS.md, paddingVertical: 16, paddingHorizontal: 32 },
+  confirmBtnText:{ fontSize: 16, ...FONTS.heavy, color: COLORS.white },
 
   header: {
     paddingTop: Platform.OS === 'ios' ? 52 : (StatusBar.currentHeight ?? 24) + 10,

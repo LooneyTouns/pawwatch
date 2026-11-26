@@ -1,27 +1,12 @@
 // screens/shared/ChatScreen.js
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { COLORS, FONTS, RADIUS } from '../../lib/theme';
 import { Avatar } from '../../components/UI';
-
-const AUTO_REPLIES = [
-  "Bonjour ! Je serais ravi(e) de garder votre animal 🐾",
-  "Bien sûr, je suis disponible à ces dates !",
-  "Quelles sont les habitudes de votre compagnon ?",
-  "Je propose une visite de présentation gratuite, ça vous convient ?",
-  "Parfait ! Je vous envoie mes disponibilités rapidement.",
-  "Votre animal a l'air adorable 🥰",
-  "Je suis certifié(e) premiers secours animaliers.",
-  "On peut se retrouver au parc pour une première rencontre si vous voulez ?",
-  "Super, hâte de faire connaissance avec votre compagnon !",
-  "D'accord, je note. Merci pour ces informations !",
-  "Pas de problème, je m'adapte à ses habitudes 🐕",
-];
-
-let replyIndex = 0;
+import { supabase, subscribeToMessages, subscribeToReadReceipts, sendMessage as sbSendMessage, markMessagesRead } from '../../lib/supabase';
 
 const formatTime = (ts) =>
   new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -34,14 +19,109 @@ const formatDateLabel = (ts) => {
   return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-export default function ChatScreen({ conversation, onBack, onSend }) {
-  const [text, setText] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const listRef = useRef(null);
+export default function ChatScreen({ conversation, onBack, onSend, userId }) {
+  const [messages,  setMessages]  = useState(
+    (conversation?.messages ?? []).map(m => ({ read: false, read_at: null, ...m }))
+  );
+  const [text,      setText]      = useState('');
+  const [connected, setConnected] = useState(false);
+  const listRef      = useRef(null);
+  const channelRef   = useRef(null);
+  const receiptRef   = useRef(null);
 
-  const messages = conversation?.messages || [];
+  const convId     = conversation?.id;
+  const isRealConv = convId && !String(convId).startsWith('conv_');
 
-  // Build display list: insert date separators
+  // Sync messages when conversation prop changes (e.g. navigating between chats)
+  useEffect(() => {
+    setMessages((conversation?.messages ?? []).map(m => ({ read: false, read_at: null, ...m })));
+  }, [convId]);
+
+  // Supabase Realtime : nouveaux messages
+  useEffect(() => {
+    if (!isRealConv) return;
+
+    const channel = subscribeToMessages(convId, (newMsg) => {
+      const mapped = {
+        id:        newMsg.id,
+        text:      newMsg.text,
+        from:      newMsg.from_id === userId ? 'me' : 'them',
+        timestamp: new Date(newMsg.created_at),
+        read:      newMsg.read ?? false,
+        read_at:   newMsg.read_at ?? null,
+      };
+      setMessages(prev => {
+        if (prev.some(m => m.id === newMsg.id)) return prev;
+        return [...prev, mapped];
+      });
+      // Marquer comme lu si c'est un message de l'autre
+      if (newMsg.from_id !== userId) {
+        markMessagesRead(convId, userId).catch(() => {});
+        onSend?.(convId, newMsg.text, 'them');
+      }
+    });
+
+    channelRef.current = channel;
+    setConnected(true);
+
+    return () => {
+      supabase.removeChannel(channel);
+      setConnected(false);
+    };
+  }, [convId, isRealConv, userId]);
+
+  // Supabase Realtime : accusés de lecture (UPDATE sur mes messages)
+  useEffect(() => {
+    if (!isRealConv) return;
+
+    const receipt = subscribeToReadReceipts(convId, (updated) => {
+      setMessages(prev => prev.map(m =>
+        m.id === updated.id
+          ? { ...m, read: true, read_at: updated.read_at }
+          : m
+      ));
+    });
+
+    receiptRef.current = receipt;
+
+    return () => { supabase.removeChannel(receipt); };
+  }, [convId, isRealConv]);
+
+  // Marquer les messages reçus comme lus à l'ouverture du chat
+  useEffect(() => {
+    if (!isRealConv || !userId) return;
+    markMessagesRead(convId, userId).catch(() => {});
+  }, [convId, isRealConv, userId]);
+
+  const handleSend = useCallback(async () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setText('');
+
+    // Optimistic message (temporary id)
+    const tmpId = `tmp_${Date.now()}`;
+    const optimistic = { id: tmpId, text: trimmed, from: 'me', timestamp: new Date() };
+    setMessages(prev => [...prev, optimistic]);
+
+    if (isRealConv && userId) {
+      try {
+        const saved = await sbSendMessage(convId, userId, trimmed);
+        // Swap tmp id for real id to avoid Realtime duplicate
+        setMessages(prev => prev.map(m => m.id === tmpId ? { ...m, id: saved.id } : m));
+        onSend?.(convId, trimmed, 'me');
+      } catch {
+        onSend?.(convId, trimmed, 'me');
+      }
+    } else {
+      // Local-only conversation (no Supabase yet)
+      onSend?.(convId, trimmed, 'me');
+    }
+  }, [text, convId, isRealConv, userId]);
+
+  // Trouver l'id du dernier message envoyé par moi (pour la pastille lu/envoyé)
+  const lastMyMsgId = [...messages].reverse().find(m => m.from === 'me')?.id ?? null;
+
+  // Build display list with date separators
   const displayItems = [];
   let lastDate = null;
   messages.forEach(msg => {
@@ -52,26 +132,6 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
     }
     displayItems.push({ type: 'msg', ...msg });
   });
-  if (isTyping) {
-    displayItems.push({ type: 'typing', key: 'typing' });
-  }
-
-  const handleSend = () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setText('');
-    onSend(conversation.id, trimmed, 'me');
-
-    // Simulate auto-reply
-    setIsTyping(true);
-    const delay = 1200 + Math.random() * 1200;
-    setTimeout(() => {
-      setIsTyping(false);
-      const reply = AUTO_REPLIES[replyIndex % AUTO_REPLIES.length];
-      replyIndex++;
-      onSend(conversation.id, reply, 'them');
-    }, delay);
-  };
 
   const initials = (conversation?.partnerName || 'XX').slice(0, 2).toUpperCase();
 
@@ -92,12 +152,12 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
         <View style={cs.headerInfo}>
           <Text style={cs.headerName}>{conversation?.partnerName}</Text>
           <Text style={cs.headerSub} numberOfLines={1}>
-            {conversation?.partnerSpecialite || 'Petsitter'}
+            {conversation?.partnerSpecialite || 'Pawsitter'}
           </Text>
         </View>
         <View style={cs.headerOnline}>
-          <View style={cs.onlineDot} />
-          <Text style={cs.onlineText}>En ligne</Text>
+          <View style={[cs.onlineDot, connected && cs.onlineDotLive]} />
+          <Text style={cs.onlineText}>{connected ? 'En ligne' : '…'}</Text>
         </View>
       </View>
 
@@ -107,9 +167,7 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
         data={displayItems}
         keyExtractor={item => item.key || item.id}
         contentContainerStyle={{ padding: 14, paddingBottom: 6 }}
-        onContentSizeChange={() =>
-          listRef.current?.scrollToEnd({ animated: true })
-        }
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         renderItem={({ item }) => {
           if (item.type === 'date') {
             return (
@@ -118,30 +176,26 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
               </View>
             );
           }
-          if (item.type === 'typing') {
-            return (
-              <View style={cs.typingRow}>
-                <Avatar initials={initials} size={26} />
-                <View style={cs.typingBubble}>
-                  <Text style={cs.typingDots}>● ● ●</Text>
-                </View>
-              </View>
-            );
-          }
           const isMe = item.from === 'me';
+          const isLast = isMe && item.id === lastMyMsgId;
+          const readAt = item.read_at ? formatTime(item.read_at) : null;
           return (
             <View style={[cs.bubbleWrap, isMe ? cs.bubbleWrapMe : cs.bubbleWrapThem]}>
-              {!isMe && (
-                <Avatar initials={initials} size={26} style={{ marginTop: 2 }} />
-              )}
-              <View style={[cs.bubble, isMe ? cs.bubbleMe : cs.bubbleThem]}>
-                <Text style={[cs.bubbleText, isMe ? cs.bubbleTextMe : cs.bubbleTextThem]}>
-                  {item.text}
-                </Text>
-                <Text style={[cs.bubbleTime, isMe ? cs.bubbleTimeMe : cs.bubbleTimeThem]}>
-                  {formatTime(item.timestamp)}
-                  {isMe && ' ✓'}
-                </Text>
+              {!isMe && <Avatar initials={initials} size={26} style={{ marginTop: 2 }} />}
+              <View style={cs.bubbleCol}>
+                <View style={[cs.bubble, isMe ? cs.bubbleMe : cs.bubbleThem]}>
+                  <Text style={[cs.bubbleText, isMe ? cs.bubbleTextMe : cs.bubbleTextThem]}>
+                    {item.text}
+                  </Text>
+                  <Text style={[cs.bubbleTime, isMe ? cs.bubbleTimeMe : cs.bubbleTimeThem]}>
+                    {formatTime(item.timestamp)}
+                  </Text>
+                </View>
+                {isLast && (
+                  <Text style={cs.receipt}>
+                    {readAt ? `✓✓ Lu à ${readAt}` : '✓ Envoyé'}
+                  </Text>
+                )}
               </View>
             </View>
           );
@@ -158,6 +212,8 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
           placeholderTextColor={COLORS.muted}
           multiline
           maxLength={500}
+          onSubmitEditing={handleSend}
+          blurOnSubmit={false}
         />
         <TouchableOpacity
           style={[cs.sendBtn, !text.trim() && cs.sendBtnOff]}
@@ -175,23 +231,22 @@ export default function ChatScreen({ conversation, onBack, onSend }) {
 const cs = StyleSheet.create({
   wrapper: { flex: 1, backgroundColor: '#EDE8E0' },
 
-  // Header
   header: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: 14, paddingVertical: 11, gap: 12,
     backgroundColor: COLORS.ink,
   },
-  backIcon:        { fontSize: 22, color: COLORS.white, ...FONTS.bold, marginRight: 2 },
-  headerAvatarRing:{ borderRadius: 22, borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)', overflow: 'hidden' },
-  headerInfo:      { flex: 1 },
-  headerName:      { fontSize: 15, ...FONTS.heavy, color: COLORS.white },
-  headerSub:       { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
-  headerOnline:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  onlineDot:       { width: 8, height: 8, borderRadius: 4, backgroundColor: '#4ADE80' },
-  onlineText:      { fontSize: 11, color: 'rgba(255,255,255,0.8)', ...FONTS.medium },
+  backIcon:         { fontSize: 22, color: COLORS.white, ...FONTS.bold, marginRight: 2 },
+  headerAvatarRing: { borderRadius: 22, borderWidth: 2, borderColor: 'rgba(255,255,255,0.4)', overflow: 'hidden' },
+  headerInfo:       { flex: 1 },
+  headerName:       { fontSize: 15, ...FONTS.heavy, color: COLORS.white },
+  headerSub:        { fontSize: 11, color: 'rgba(255,255,255,0.7)', marginTop: 1 },
+  headerOnline:     { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  onlineDot:        { width: 8, height: 8, borderRadius: 4, backgroundColor: '#94A3B8' },
+  onlineDotLive:    { backgroundColor: '#4ADE80' },
+  onlineText:       { fontSize: 11, color: 'rgba(255,255,255,0.8)', ...FONTS.medium },
 
-  // Date separator
-  dateSep: { alignItems: 'center', marginVertical: 14 },
+  dateSep:  { alignItems: 'center', marginVertical: 14 },
   dateLabel: {
     fontSize: 11, color: COLORS.muted,
     backgroundColor: 'rgba(0,0,0,0.07)',
@@ -199,16 +254,13 @@ const cs = StyleSheet.create({
     borderRadius: RADIUS.full,
   },
 
-  // Bubble wrappers
   bubbleWrap:     { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginVertical: 3 },
   bubbleWrapMe:   { justifyContent: 'flex-end' },
   bubbleWrapThem: { justifyContent: 'flex-start' },
 
-  // Bubbles
-  bubble: {
-    maxWidth: '75%', paddingHorizontal: 14, paddingVertical: 9,
-    borderRadius: 20,
-  },
+  bubbleCol: { alignItems: 'flex-end', maxWidth: '75%' },
+
+  bubble: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 20 },
   bubbleMe:   { backgroundColor: COLORS.bark, borderBottomRightRadius: 4 },
   bubbleThem: { backgroundColor: COLORS.white, borderBottomLeftRadius: 4 },
 
@@ -220,15 +272,8 @@ const cs = StyleSheet.create({
   bubbleTimeMe:   { color: 'rgba(255,255,255,0.55)', textAlign: 'right' },
   bubbleTimeThem: { color: COLORS.muted },
 
-  // Typing indicator
-  typingRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 3 },
-  typingBubble: {
-    backgroundColor: COLORS.white, borderRadius: 16,
-    paddingHorizontal: 14, paddingVertical: 10,
-  },
-  typingDots: { fontSize: 11, color: COLORS.muted, letterSpacing: 4 },
+  receipt: { fontSize: 10, color: COLORS.muted, marginTop: 3, marginRight: 2 },
 
-  // Input bar
   inputBar: {
     flexDirection: 'row', alignItems: 'flex-end',
     backgroundColor: COLORS.white,
@@ -241,11 +286,7 @@ const cs = StyleSheet.create({
     borderRadius: 22, paddingHorizontal: 16, paddingVertical: 10,
     fontSize: 14, color: COLORS.ink, maxHeight: 120,
   },
-  sendBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.bark,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  sendBtn:    { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bark, alignItems: 'center', justifyContent: 'center' },
   sendBtnOff: { backgroundColor: COLORS.border },
   sendIcon:   { fontSize: 16, color: COLORS.white, marginLeft: 2 },
 });

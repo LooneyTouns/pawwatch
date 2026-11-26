@@ -1,16 +1,59 @@
 // screens/shared/ProfilScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, TextInput, Alert, Switch, Image,
+  StyleSheet, TextInput, Alert, Switch, Image, ActivityIndicator, Modal,
+  Animated, Dimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
-import { supabase } from '../../lib/supabase';
-import { Card, Avatar, SectionLabel, PhotoUpload, AnimalEditor, PriceInput } from '../../components/UI';
+import {
+  supabase, getUserProfile, updateUserProfile, uploadProfilePhoto, uploadAnimalPhoto, uploadJardinPhoto,
+  getGardeCount, getAnimaux, saveAnimaux,
+  getProfilPhotos, uploadProfilPhoto, addProfilPhoto, deleteProfilPhoto,
+} from '../../lib/supabase';
+import { Card, Avatar, SectionLabel, PhotoUpload, AnimalEditor, PriceInput, validateAnimaux } from '../../components/UI';
+import AddressAutocomplete from '../../components/AddressAutocomplete';
+import CalendrierDispo from '../../components/CalendrierDispo';
+import { getDisponibilites, saveDisponibilites } from '../../lib/supabase';
+import { onboardingToAnimaux, onboardingToPetsitter } from '../../lib/onboardingMap';
 
 const DOG_ICON = require('../../assets/dog-icon.png');
 const CAT_ICON = require('../../assets/cat-icon.png');
+
+const ANIMAL_EMOJI = { chien: '🐕', chat: '🐈', lapin: '🐇', rongeur: '🐹', oiseau: '🐦', reptile: '🦎', autre: '🐾' };
+const formatDateFr = (str) => new Date(str + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
+const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+// ── Sélecteur de date (14 prochains jours) ─────────────────────────
+const InlineDatePicker = ({ label, date, onSelect }) => {
+  const today = new Date();
+  const days = Array.from({ length: 21 }, (_, i) => {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    return d;
+  });
+  return (
+    <View style={{ marginBottom: 16 }}>
+      <Text style={ps.fieldLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {days.map((d, i) => {
+          const sel = date && d.toDateString() === date.toDateString();
+          return (
+            <TouchableOpacity key={i} onPress={() => onSelect(d)}
+              style={[ps.dayBtn, sel && ps.dayBtnSel]} activeOpacity={0.75}>
+              <Text style={[ps.dayName, sel && ps.dayNameSel]}>
+                {['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()]}
+              </Text>
+              <Text style={[ps.dayNum, sel && ps.dayNumSel]}>{d.getDate()}</Text>
+              <Text style={[ps.dayMon, sel && ps.dayMonSel]}>{MONTHS_FR[d.getMonth()]}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+};
 
 // ── Checkbox ──────────────────────────────────────────────────────
 const CheckOption = ({ label, sub, checked, onToggle, image }) => (
@@ -44,79 +87,346 @@ const OuiNon = ({ value, onChange }) => (
 );
 
 
-export default function ProfilScreen({ user, onLogout, onProfilComplet, profilComplet }) {
+export default function ProfilScreen({ user, onLogout, onProfilComplet, profilComplet, initialData, initialTab, onInitialTabConsumed }) {
   const nom      = user?.user_metadata?.nom ?? user?.email ?? 'Utilisateur';
   const email    = user?.email ?? '';
-  const role     = user?.user_metadata?.role ?? 'proprietaire';
+  const rawRole  = user?.user_metadata?.role ?? initialData?.role ?? 'proprietaire';
+  const role     = rawRole === 'pawsitter' ? 'petsitter' : rawRole;
   const initiales = nom.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   const isProprio   = role === 'proprietaire';
   const isPetsitter = role === 'petsitter';
 
   // ── Photo de profil ──
-  const [photoProfi, setPhotoProfi] = useState(null);
+  const [photoProfi,      setPhotoProfi]      = useState(null);
+  const [uploadingPhoto,  setUploadingPhoto]  = useState(false);
+  const [profileStats,    setProfileStats]    = useState({ gardes: 0, note: null, nb_avis: 0 });
+  const [saving,          setSaving]          = useState(false);
+  // Blob des réponses d'onboarding (persisté dans users.onboarding), maintenu à jour aux sauvegardes
+  const [onboardingBlob,  setOnboardingBlob]  = useState(() => initialData ?? null);
+
+  // Charger la photo et les stats depuis Supabase
+  // ── Lat/lon sauvegardées depuis AddressAutocomplete ──
+  const [adresseLat, setAdresseLat] = useState(null);
+  const [adresseLon, setAdresseLon] = useState(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    Promise.all([
+      getUserProfile(user.id),
+      getGardeCount(user.id, role).catch(() => 0),
+      isProprio ? getAnimaux(user.id).catch(() => []) : Promise.resolve([]),
+    ]).then(([profile, gardes, animaux]) => {
+      if (profile?.photo_url) setPhotoProfi(profile.photo_url);
+      if (profile?.telephone)     setTelephone(profile.telephone);
+      if (profile?.adresse)       setAdresse(profile.adresse);
+      if (profile?.ville)         setVille(profile.ville);
+      if (profile?.onboarding?.date_naissance) setDateNaissance(profile.onboarding.date_naissance);
+      if (profile?.latitude)  setAdresseLat(profile.latitude);
+      if (profile?.longitude) setAdresseLon(profile.longitude);
+      setProfileStats({
+        gardes,
+        note:    profile?.note ?? null,
+        nb_avis: profile?.nb_avis ?? 0,
+      });
+
+      if (profile?.onboarding && typeof profile.onboarding === 'object') {
+        setOnboardingBlob(profile.onboarding);
+      }
+
+      // Reporter les réponses d'onboarding hors session d'inscription (reconnexion) :
+      // initialData est vide, on relit le blob persisté dans users.onboarding.
+      const od = (!initialData && profile?.onboarding) ? profile.onboarding : null;
+
+      if (isProprio) {
+        if (animaux.length > 0) setMesAnimaux(animaux);
+        else if (od) setMesAnimaux(onboardingToAnimaux(od));
+      } else if (od) {
+        const m = onboardingToPetsitter(od);
+        // Champs avec colonne dédiée : la valeur enregistrée du profil prime, sinon onboarding
+        const acc = Array.isArray(profile?.animaux_acceptes) ? profile.animaux_acceptes : [];
+        const sv  = Array.isArray(profile?.services) ? profile.services : [];
+        setIsDogsitter(acc.length ? acc.includes('chiens') : m.isDogsitter);
+        setIsCatsitter(acc.length ? acc.includes('chats')  : m.isCatsitter);
+        setIsAllsitter(acc.length ? acc.some(a => ['rongeurs', 'oiseaux', 'reptiles'].includes(a)) : m.isAllsitter);
+        setModePromenade(sv.length ? sv.includes('promenade')      : m.modePromenade);
+        setModeChezProprio(sv.length ? sv.includes('visite')        : m.modeChezProprio);
+        setModeGardeJour(sv.length ? sv.includes('garde_domicile') : m.modeGardeJour);
+        setModeGardeJourPetsi(sv.length ? sv.includes('garde_jour') : m.modeGardeJourPetsi);
+        setModePension(sv.length ? (sv.includes('pension') || sv.includes('nuitee')) : m.modePension);
+        setExperience(profile?.bio || m.experience || '');
+        // Champs sans colonne : depuis le blob onboarding (mis à jour à chaque sauvegarde)
+        setADesAnimaux(m.aDesAnimaux);
+        setAnimauxPerso(m.animauxPerso);
+        setLogement(m.logement);
+        setAJardin(m.aJardin);
+        setJardinClos(m.jardinClos);
+        if (m.photoJardin) setPhotoJardin(m.photoJardin);
+        setPrixPromenade(m.prixPromenade);
+        setPrixPension(m.prixPension);
+        setPrixGardeJour(m.prixGardeJour);
+        setPrixVisite(m.prixVisite);
+        setPrixGardeJourPetsi(m.prixGardeJourPetsi);
+      }
+    }).catch(() => {});
+  }, [user?.id]);
+
+  // Charger les disponibilités quand l'onglet dispo s'ouvre
+  useEffect(() => {
+    if (activeTab !== 'dispo' || !user?.id || !isPetsitter) return;
+    setLoadingDispo(true);
+    getDisponibilites(user.id)
+      .then(dates => setDispoDates(new Set(dates)))
+      .catch(() => {})
+      .finally(() => setLoadingDispo(false));
+  }, [activeTab, user?.id, isPetsitter]);
+
+  const saveTimerRef = useRef(null);
+  const [dispoSaved, setDispoSaved] = useState(false);
+
+  const triggerAutoSave = useCallback((dates) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setDispoSaved(false);
+    saveTimerRef.current = setTimeout(async () => {
+      if (!user?.id) return;
+      setSavingDispo(true);
+      try {
+        await saveDisponibilites(user.id, [...dates]);
+        setDispoSaved(true);
+        setTimeout(() => setDispoSaved(false), 2500);
+      } catch {
+        Alert.alert('Erreur', 'Impossible de sauvegarder les disponibilités.');
+      } finally {
+        setSavingDispo(false);
+      }
+    }, 1200);
+  }, [user?.id]);
+
+  const handleToggleDispo = useCallback((iso) => {
+    setDispoDates(prev => {
+      const next = new Set(prev);
+      next.has(iso) ? next.delete(iso) : next.add(iso);
+      triggerAutoSave(next);
+      return next;
+    });
+  }, [triggerAutoSave]);
+
+  const handleClearDispo = useCallback(() => {
+    const empty = new Set();
+    setDispoDates(empty);
+    triggerAutoSave(empty);
+  }, [triggerAutoSave]);
+
+  const handleAddManyDispo = useCallback((isoArray) => {
+    setDispoDates(prev => {
+      const next = new Set(prev);
+      isoArray.forEach(iso => next.add(iso));
+      triggerAutoSave(next);
+      return next;
+    });
+  }, [triggerAutoSave]);
+
+  // ── Photos de garde ──
+  useEffect(() => {
+    if (activeTab !== 'photos' || !user?.id || !isPetsitter) return;
+    setLoadingPhotos(true);
+    getProfilPhotos(user.id)
+      .then(photos => setGardePhotos(prev => photos.length > 0 ? photos : prev))
+      .catch(() => {})
+      .finally(() => setLoadingPhotos(false));
+  }, [activeTab, user?.id, isPetsitter]);
+
+  const openAddPhotoModal = useCallback(() => {
+    setNewPhotoUri(null);
+    setNewPhotoCaption('');
+    setSavingPhoto(false);
+    setShowAddPhotoModal(true);
+  }, []);
+
+  const pickNewPhoto = useCallback(async (fromCamera) => {
+    const isWeb = require('react-native').Platform.OS === 'web';
+    try {
+      if (fromCamera && !isWeb) {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') { Alert.alert('Permission refusée', 'Autorise l\'accès à la caméra dans les réglages.'); return; }
+        const r = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.85 });
+        if (!r.canceled) setNewPhotoUri(r.assets[0].uri);
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') { Alert.alert('Permission refusée', 'Autorise l\'accès à la galerie dans les réglages.'); return; }
+        const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.85 });
+        if (!r.canceled) setNewPhotoUri(r.assets[0].uri);
+      }
+    } catch (e) {
+      Alert.alert('Erreur', e?.message ?? 'Impossible d\'accéder aux photos.');
+    }
+  }, []);
+
+  const saveNewPhoto = async () => {
+    if (!newPhotoUri || !user?.id) return;
+    setSavingPhoto(true);
+    try {
+      const uri = newPhotoUri;
+      const uid = user.id;
+      const caption = newPhotoCaption.trim() || null;
+      const url = await uploadProfilPhoto(uid, uri);
+      await addProfilPhoto(uid, url, caption);
+      const photos = await getProfilPhotos(uid);
+      setGardePhotos(photos);
+      setShowAddPhotoModal(false);
+      setNewPhotoUri(null);
+      setNewPhotoCaption('');
+    } catch (e) {
+      Alert.alert('Erreur', e?.message ?? 'Impossible d\'ajouter la photo.');
+    } finally {
+      setSavingPhoto(false);
+    }
+  };
+
+  const confirmDeletePhoto = useCallback((photoId, photoUrl) => {
+    Alert.alert('Supprimer cette photo ?', 'Cette action est irréversible.', [
+      { text: 'Annuler', style: 'cancel' },
+      { text: 'Supprimer', style: 'destructive', onPress: async () => {
+        try {
+          await deleteProfilPhoto(user.id, photoId, photoUrl);
+          setGardePhotos(prev => prev.filter(p => p.id !== photoId));
+          setViewingPhoto(null);
+        } catch (e) {
+          Alert.alert('Erreur', e?.message ?? 'Impossible de supprimer la photo.');
+        }
+      }},
+    ]);
+  }, [viewingPhoto, user?.id]);
 
   const pickPhotoProfi = async (fromCamera = true) => {
-    const fn = fromCamera
+    const isWeb = require('react-native').Platform.OS === 'web';
+    // Sur web, la caméra native n'est pas fiable → forcer la galerie
+    const useCamera = fromCamera && !isWeb;
+    const fn = useCamera
       ? ImagePicker.launchCameraAsync
       : ImagePicker.launchImageLibraryAsync;
-    const perm = fromCamera
-      ? await ImagePicker.requestCameraPermissionsAsync()
-      : await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== 'granted') {
-      Alert.alert('Permission requise', fromCamera ? 'Accès à la caméra refusé.' : 'Accès à la galerie refusé.');
-      return;
+    if (useCamera) {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Permission requise', 'Accès à la caméra refusé.');
+        return;
+      }
     }
-    const result = await fn({
-      allowsEditing: true, aspect: [1, 1], quality: 0.85,
-    });
-    if (!result.canceled) setPhotoProfi(result.assets[0].uri);
+    const result = await fn({ allowsEditing: true, aspect: [1, 1], quality: 0.85 });
+    if (result.canceled) return;
+
+    const uri = result.assets[0].uri;
+    setPhotoProfi(uri);
+
+    // Upload vers Supabase Storage
+    if (user?.id) {
+      setUploadingPhoto(true);
+      uploadProfilePhoto(user.id, uri)
+        .then(url => setPhotoProfi(url))
+        .catch(e => {
+          console.error('[uploadProfilePhoto]', e?.message ?? e);
+          Alert.alert('Erreur upload', e?.message ?? 'Impossible d\'uploader la photo.');
+        })
+        .finally(() => setUploadingPhoto(false));
+    }
   };
 
   // ── Tabs ──
-  const [activeTab, setActiveTab] = useState('profil');
+  const [activeTab, setActiveTab] = useState(initialTab ?? 'profil');
+  useEffect(() => {
+    if (initialTab && initialTab !== 'profil') onInitialTabConsumed?.();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const pillX = useRef(new Animated.Value(0)).current;
+  const pillW = useRef(new Animated.Value(0)).current;
+  const tabMeasurements = useRef({});
+  const pillInitialised = useRef(false);
+
+  const onTabLayout = useCallback((id) => (e) => {
+    const { x, width } = e.nativeEvent.layout;
+    tabMeasurements.current[id] = { x, width };
+    if (id === activeTab && !pillInitialised.current) {
+      pillX.setValue(x + 3);
+      pillW.setValue(width - 6);
+      pillInitialised.current = true;
+    }
+  }, [activeTab, pillX, pillW]);
+
+  const selectTab = useCallback((id) => {
+    const m = tabMeasurements.current[id];
+    if (m) {
+      Animated.parallel([
+        Animated.spring(pillX, { toValue: m.x + 3, useNativeDriver: false, damping: 20, stiffness: 220, mass: 0.7 }),
+        Animated.spring(pillW, { toValue: m.width - 6, useNativeDriver: false, damping: 20, stiffness: 220, mass: 0.7 }),
+      ]).start();
+    }
+    setActiveTab(id);
+  }, [pillX, pillW]);
+
+  // ── Disponibilités (pawsitter) ──
+  const [dispoDates,   setDispoDates]   = useState(new Set());
+  const [loadingDispo, setLoadingDispo] = useState(false);
+  const [savingDispo,  setSavingDispo]  = useState(false);
+
+  // ── Photos de garde (petsitter) ──
+  const [gardePhotos,       setGardePhotos]       = useState([]);
+  const [loadingPhotos,     setLoadingPhotos]     = useState(false);
+  const [viewingPhoto,      setViewingPhoto]      = useState(null);
+  const [showAddPhotoModal, setShowAddPhotoModal] = useState(false);
+  const [newPhotoUri,       setNewPhotoUri]       = useState(null);
+  const [newPhotoCaption,   setNewPhotoCaption]   = useState('');
+  const [savingPhoto,       setSavingPhoto]       = useState(false);
 
   // ── Notifications ──
   const [notifPush,  setNotifPush]  = useState(true);
   const [notifEmail, setNotifEmail] = useState(false);
 
   // ── Coordonnées propriétaire ──
-  const [telephone,   setTelephone]   = useState('');
-  const [adresse,     setAdresse]     = useState('');
-  const [codePostal,  setCodePostal]  = useState('');
-  const [ville,       setVille]       = useState('');
+  const [telephone,     setTelephone]     = useState('');
+  const [adresse,       setAdresse]       = useState('');
+  const [codePostal,    setCodePostal]    = useState('');
+  const [ville,         setVille]         = useState('');
+  const [dateNaissance, setDateNaissance] = useState('');
 
-  // ── Animaux du propriétaire (à confier) ──
-  const [mesAnimaux, setMesAnimaux] = useState([]);
+  // ── Mapping onboarding → profil (réponses de la session d'inscription) ──
+  const od = initialData ?? {};
+  const PS = onboardingToPetsitter(od);
+
+  // ── Animaux du propriétaire (à confier) — pré-remplis depuis l'onboarding ──
+  const [mesAnimaux, setMesAnimaux] = useState(() => onboardingToAnimaux(od));
+
 
   // ── Petsitter : spécialités ──
-  const [isCatsitter, setIsCatsitter] = useState(false);
-  const [isDogsitter, setIsDogsitter] = useState(false);
-  const [isAllsitter, setIsAllsitter] = useState(false);
+  const [isCatsitter, setIsCatsitter] = useState(PS.isCatsitter);
+  const [isDogsitter, setIsDogsitter] = useState(PS.isDogsitter);
+  const [isAllsitter, setIsAllsitter] = useState(PS.isAllsitter);
 
   // ── Petsitter : expérience ──
-  const [experience, setExperience] = useState('');
+  const [experience, setExperience] = useState(PS.experience);
 
   // ── Petsitter : animaux perso ──
-  const [aDesAnimaux,  setADesAnimaux]  = useState(false);
-  const [animauxPerso, setAnimauxPerso] = useState([]);
+  const [aDesAnimaux,  setADesAnimaux]  = useState(PS.aDesAnimaux);
+  const [animauxPerso, setAnimauxPerso] = useState(PS.animauxPerso);
 
   // ── Petsitter : logement ──
-  const [logement,    setLogement]    = useState('appartement');
-  const [aJardin,     setAJardin]     = useState(false);
-  const [jardinClos,  setJardinClos]  = useState(false);
-  const [photoJardin, setPhotoJardin] = useState(null);
+  const [logement,    setLogement]    = useState(PS.logement);
+  const [aJardin,     setAJardin]     = useState(PS.aJardin);
+  const [jardinClos,  setJardinClos]  = useState(PS.jardinClos);
+  const [photoJardin, setPhotoJardin] = useState(PS.photoJardin ?? null);
 
   // ── Petsitter : modes de garde ──
-  const [modePromenade,   setModePromenade]   = useState(false);
-  const [modeChezProprio, setModeChezProprio] = useState(false);
-  const [modeGardeJour,   setModeGardeJour]   = useState(false);
-  const [modePension,     setModePension]     = useState(false);
+  const [modePromenade,     setModePromenade]     = useState(PS.modePromenade);
+  const [modeChezProprio,   setModeChezProprio]   = useState(PS.modeChezProprio);
+  const [modeGardeJour,     setModeGardeJour]     = useState(PS.modeGardeJour);
+  const [modeGardeJourPetsi,setModeGardeJourPetsi]= useState(PS.modeGardeJourPetsi);
+  const [modePension,       setModePension]       = useState(PS.modePension);
 
   // ── Petsitter : tarifs ──
-  const [prixPromenade, setPrixPromenade] = useState('');
-  const [prixPension,   setPrixPension]   = useState('');
-  const [prixGardeJour, setPrixGardeJour] = useState('');
+  const [prixPromenade,     setPrixPromenade]     = useState(PS.prixPromenade);
+  const [prixPension,       setPrixPension]       = useState(PS.prixPension);
+  const [prixGardeJour,     setPrixGardeJour]     = useState(PS.prixGardeJour);
+  const [prixVisite,        setPrixVisite]        = useState(PS.prixVisite);
+  const [prixGardeJourPetsi,setPrixGardeJourPetsi]= useState(PS.prixGardeJourPetsi);
 
   // ── Mon compte : changement email / mdp ──
   const [newEmail,       setNewEmail]       = useState('');
@@ -171,7 +481,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
     );
   };
 
-  const labelRole = role === 'petsitter' ? '🤝 Petsitter' : '🏠 Propriétaire';
+  const labelRole = role === 'petsitter' ? '🤝 Pawsitter' : '🏠 Propriétaire';
 
   const rolePillColor = role === 'petsitter'
     ? { bg: COLORS.okBg,   text: COLORS.moss }
@@ -181,24 +491,127 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
     if (!isPetsitter) return true;
     if (!photoProfi) return false;
     if (!isCatsitter && !isDogsitter && !isAllsitter) return false;
-    if (!modePromenade && !modeChezProprio && !modeGardeJour && !modePension) return false;
-    if (!experience.trim()) return false;
+    if (!modePromenade && !modeChezProprio && !modeGardeJour && !modeGardeJourPetsi && !modePension) return false;
+    if (!String(experience || '').trim()) return false;
     if (!logement) return false;
     if (aJardin === null) return false;
     if (aJardin && !photoJardin) return false;
     return true;
   };
 
-  const handleSauvegarder = () => {
+  const handleSauvegarder = async () => {
     if (isPetsitter && aJardin && !photoJardin) {
       Alert.alert('Photo manquante', 'Une photo du jardin est obligatoire si vous avez un jardin.');
       return;
     }
-    if (isPetsitter && isProfilComplet() && onProfilComplet && !profilComplet) {
-      onProfilComplet();
-      Alert.alert('🎉 Profil validé !', 'Ton profil petsitter est maintenant visible. Tu peux recevoir des demandes de garde.');
-    } else {
-      Alert.alert('Profil sauvegardé ✓', 'Vos informations ont été mises à jour.');
+    if (isProprio && mesAnimaux.length > 0) {
+      const animalErrors = validateAnimaux(mesAnimaux);
+      if (animalErrors.length > 0) {
+        Alert.alert(
+          'Champs manquants',
+          'Tous les champs sont obligatoires pour chaque animal :\n\n' + animalErrors.join('\n'),
+        );
+        return;
+      }
+    }
+    if (!user?.id) return;
+
+    const payload = {
+      telephone:  telephone.trim()  || null,
+      adresse:    adresse.trim()    || null,
+      ville:      ville.trim()      || null,
+      latitude:   adresseLat        ?? null,
+      longitude:  adresseLon        ?? null,
+      onboarding: { ...(onboardingBlob || {}), date_naissance: dateNaissance.trim() || null },
+    };
+    let mergedOnboarding = null;
+
+    if (isPetsitter) {
+      const animaux_acceptes = [
+        ...(isDogsitter ? ['chiens'] : []),
+        ...(isCatsitter ? ['chats']  : []),
+        ...(isAllsitter ? ['rongeurs', 'oiseaux', 'reptiles'] : []),
+      ];
+      const services = [
+        ...(modePromenade      ? ['promenade']      : []),
+        ...(modeChezProprio    ? ['visite']         : []),
+        ...(modeGardeJour      ? ['garde_domicile'] : []),
+        ...(modeGardeJourPetsi ? ['garde_jour']     : []),
+        ...(modePension        ? ['nuitee']         : []),
+      ];
+      // Champs sans colonne dédiée : conservés dans le blob onboarding
+      // Upload de la photo jardin si URI locale
+      let photoJardinUrl = photoJardin;
+      if (aJardin && photoJardin && !photoJardin.startsWith('http')) {
+        try {
+          photoJardinUrl = await uploadJardinPhoto(user.id, photoJardin);
+          setPhotoJardin(photoJardinUrl);
+        } catch (e) {
+          console.error('[uploadJardinPhoto]', e?.message ?? e);
+        }
+      }
+
+      mergedOnboarding = {
+        ...(onboardingBlob || {}),
+        date_naissance:    dateNaissance.trim() || null,
+        logement:          (logement === 'maison' && aJardin) ? 'maison_jardin' : logement,
+        logement__cloture: aJardin ? (jardinClos ? 'oui' : 'non') : 'sans_jardin',
+        photo_jardin:      aJardin ? (photoJardinUrl || null) : null,
+        animaux_maison: aDesAnimaux ? ['autre'] : ['aucun'],
+        animaux_perso: (animauxPerso || [])
+          .map(a => ({ nom: (a.nom || '').trim(), race: (a.race || '').trim() || null }))
+          .filter(a => a.nom),
+        tarif_promenade:      prixPromenade      || '',
+        tarif_nuitee:         prixPension        || '',
+        tarif_garde_domicile: prixGardeJour      || '',
+        tarif_visite:         prixVisite         || '',
+        tarif_garde_jour:     prixGardeJourPetsi || '',
+      };
+      Object.assign(payload, {
+        animaux_acceptes,
+        services,
+        bio: String(experience || '').trim() || null,
+        onboarding: mergedOnboarding,
+      });
+    }
+
+    setSaving(true);
+    try {
+      await updateUserProfile(user.id, payload);
+      if (mergedOnboarding) setOnboardingBlob(mergedOnboarding);
+
+      if (isProprio && mesAnimaux.length > 0) {
+        // Upload des photos d'animaux locales (URI local → URL permanente)
+        let animauxFinal = mesAnimaux;
+        const hasLocalPhotos = mesAnimaux.some(a => a.photo && !a.photo.startsWith('http'));
+        if (hasLocalPhotos) {
+          animauxFinal = await Promise.all(mesAnimaux.map(async (animal, idx) => {
+            if (!animal.photo || animal.photo.startsWith('http')) return animal;
+            const slug = `${user.id}_${(animal.nom || 'animal').toLowerCase().replace(/[^a-z0-9]/g, '_').slice(0, 20)}_${idx}`;
+            try {
+              const url = await uploadAnimalPhoto(slug, animal.photo);
+              return { ...animal, photo: url };
+            } catch { return animal; }
+          }));
+          setMesAnimaux(animauxFinal);
+          // Persister les URLs dans users.onboarding
+          const updatedBlob = { ...(onboardingBlob || {}) };
+          animauxFinal.forEach((a, idx) => { if (a.photo) updatedBlob[`photo_nom_animal_${idx}`] = a.photo; });
+          await supabase.from('users').update({ onboarding: updatedBlob }).eq('id', user.id).catch(() => {});
+          setOnboardingBlob(updatedBlob);
+        }
+        await saveAnimaux(user.id, animauxFinal);
+      }
+      if (isPetsitter && isProfilComplet() && onProfilComplet && !profilComplet) {
+        onProfilComplet();
+        Alert.alert('🎉 Profil validé !', 'Ton profil pawsitter est maintenant visible. Tu peux recevoir des demandes de garde.');
+      } else {
+        Alert.alert('Profil sauvegardé ✓', 'Vos informations ont été mises à jour.');
+      }
+    } catch {
+      Alert.alert('Erreur', 'Impossible de sauvegarder le profil. Réessaie.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -207,22 +620,26 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
 
       {/* ── Barre d'onglets ── */}
       <View style={ps.tabBar}>
+        <Animated.View style={[ps.tabPill, { left: pillX, width: pillW }]} />
         {[
-          { id: 'profil',   label: '👤 Profil'    },
-          { id: 'modifier', label: '✏️ Modifier'  },
-          { id: 'params',   label: '⚙️ Paramètres' },
-        ].map(t => (
+          { id: 'profil',   label: '👤 Profil'   },
+          { id: 'modifier', label: '✏️ Modifier' },
+          isPetsitter && { id: 'dispo',   label: '📅 Dispo'  },
+          isPetsitter && { id: 'photos',  label: '📷 Photos' },
+          { id: 'params',   label: '⚙️ Config'   },
+        ].filter(Boolean).map(t => (
           <TouchableOpacity
             key={t.id}
-            onPress={() => setActiveTab(t.id)}
-            style={[ps.tabBtn, activeTab === t.id && ps.tabBtnActive]}
+            onPress={() => selectTab(t.id)}
+            onLayout={onTabLayout(t.id)}
+            style={ps.tabBtn}
           >
             <Text style={[ps.tabBtnText, activeTab === t.id && ps.tabBtnTextActive]}>{t.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      <ScrollView style={ps.container} contentContainerStyle={ps.content}>
+      <ScrollView style={ps.container} contentContainerStyle={ps.content} keyboardShouldPersistTaps="handled">
 
         {/* ════════ MON PROFIL ════════ */}
         {activeTab === 'profil' && (
@@ -231,15 +648,33 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
             <View style={ps.heroSection}>
               <TouchableOpacity
                 style={ps.heroAvatarRing}
-                onPress={() => pickPhotoProfi(true)}
-                onLongPress={() => pickPhotoProfi(false)}
+                onPress={() => Alert.alert(
+                  'Photo de profil',
+                  'Choisir la source',
+                  [
+                    { text: '📷 Caméra',  onPress: () => pickPhotoProfi(true)  },
+                    { text: '🖼️ Galerie', onPress: () => pickPhotoProfi(false) },
+                    { text: 'Annuler', style: 'cancel' },
+                  ]
+                )}
                 activeOpacity={0.85}
               >
                 <Avatar initials={initiales} size={72} photoUri={photoProfi} />
                 <View style={ps.heroAvatarBadge}>
-                  <Text style={{ fontSize: 12 }}>📸</Text>
+                  {uploadingPhoto
+                    ? <ActivityIndicator size="small" color={COLORS.white} />
+                    : <Text style={{ fontSize: 12 }}>📸</Text>
+                  }
                 </View>
               </TouchableOpacity>
+              {/* Bandeau obligatoire si pawsitter sans photo */}
+              {isPetsitter && !photoProfi && (
+                <View style={ps.photoWarning}>
+                  <Text style={ps.photoWarningText}>
+                    📸 Photo obligatoire pour apparaître dans la recherche
+                  </Text>
+                </View>
+              )}
               <Text style={ps.heroNom}>{nom}</Text>
               <Text style={ps.heroEmail}>{email}</Text>
               <View style={ps.heroRolePill}>
@@ -247,8 +682,8 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
               </View>
               <View style={ps.heroStatsRow}>
                 {[
-                  { val: '0', label: 'Gardes' },
-                  { val: '⭐ —', label: 'Évaluation' },
+                  { val: String(profileStats.gardes), label: 'Gardes' },
+                  { val: profileStats.note ? `⭐ ${profileStats.note}` : '⭐ —', label: `${profileStats.nb_avis} avis` },
                   { val: String(mesAnimaux.length), label: 'Animaux' },
                 ].map((s, i) => (
                   <View key={s.label} style={[ps.heroStat, i < 2 && ps.heroStatBorder]}>
@@ -331,7 +766,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
               const steps = [
                 !!photoProfi,
                 isDogsitter || isCatsitter || isAllsitter,
-                modePromenade || modeChezProprio || modeGardeJour || modePension,
+                modePromenade || modeChezProprio || modeGardeJour || modeGardeJourPetsi || modePension,
                 experience.trim().length > 0,
                 !!logement,
                 aJardin !== null && (!aJardin || !!photoJardin),
@@ -417,7 +852,25 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
             <Card>
               <Text style={ps.cardHint}>Partagées avec ton interlocuteur lors d'une mise en relation</Text>
 
-              <Text style={ps.fieldLabel}>Téléphone</Text>
+              <Text style={ps.fieldLabel}>Date de naissance <Text style={{ color: COLORS.clay }}>*</Text></Text>
+              <TextInput
+                style={ps.coordInput}
+                placeholder="JJ/MM/AAAA"
+                placeholderTextColor={COLORS.border}
+                value={dateNaissance}
+                onChangeText={t => {
+                  const d = t.replace(/[^0-9]/g, '').slice(0, 8);
+                  let val;
+                  if (d.length <= 2) val = d;
+                  else if (d.length <= 4) val = `${d.slice(0,2)}/${d.slice(2)}`;
+                  else val = `${d.slice(0,2)}/${d.slice(2,4)}/${d.slice(4,8)}`;
+                  setDateNaissance(val);
+                }}
+                keyboardType="number-pad"
+                maxLength={10}
+              />
+
+              <Text style={[ps.fieldLabel, { marginTop: 12 }]}>Téléphone</Text>
               <TextInput
                 style={ps.coordInput}
                 placeholder="06 12 34 56 78"
@@ -428,38 +881,27 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
               />
 
               <Text style={[ps.fieldLabel, { marginTop: 12 }]}>Adresse</Text>
-              <TextInput
-                style={ps.coordInput}
-                placeholder="12 rue des Lilas"
-                placeholderTextColor={COLORS.border}
+              <AddressAutocomplete
                 value={adresse}
                 onChangeText={setAdresse}
+                onSelect={({ adresse: a, ville: v, codePostal: cp, latitude: lat, longitude: lon }) => {
+                  setAdresse(a);
+                  if (v)   setVille(v);
+                  if (cp)  setCodePostal(cp);
+                  if (lat) setAdresseLat(lat);
+                  if (lon) setAdresseLon(lon);
+                }}
+                placeholder="12 rue des Lilas, Paris…"
               />
 
-              <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                <View style={{ width: 100 }}>
-                  <Text style={ps.fieldLabel}>Code postal</Text>
-                  <TextInput
-                    style={ps.coordInput}
-                    placeholder="75011"
-                    placeholderTextColor={COLORS.border}
-                    value={codePostal}
-                    onChangeText={setCodePostal}
-                    keyboardType="numeric"
-                    maxLength={5}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={ps.fieldLabel}>Ville</Text>
-                  <TextInput
-                    style={ps.coordInput}
-                    placeholder="Paris"
-                    placeholderTextColor={COLORS.border}
-                    value={ville}
-                    onChangeText={setVille}
-                  />
-                </View>
-              </View>
+              <Text style={[ps.fieldLabel, { marginTop: 12 }]}>Ville</Text>
+              <TextInput
+                style={ps.coordInput}
+                placeholder="Paris"
+                placeholderTextColor={COLORS.border}
+                value={ville}
+                onChangeText={setVille}
+              />
             </Card>
 
             {/* ─────── SECTION PROPRIÉTAIRE ─────── */}
@@ -471,6 +913,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                   <Text style={ps.cardHint}>Ajoute les animaux dont tu confies la garde</Text>
                   <AnimalEditor animaux={mesAnimaux} onChange={setMesAnimaux} />
                 </Card>
+
               </>
             )}
 
@@ -502,9 +945,11 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                 <Card>
                   <CheckOption label="🚶 Promenade" sub="Je promène les animaux"
                     checked={modePromenade} onToggle={() => setModePromenade(!modePromenade)} />
-                  <CheckOption label="🏠 Garde chez le propriétaire" sub="Je me déplace chez le proprio"
+                  <CheckOption label="🏠 Garde au domicile du propriétaire" sub="Je me déplace chez le proprio"
                     checked={modeChezProprio} onToggle={() => setModeChezProprio(!modeChezProprio)} />
-                  <CheckOption label="☀️ Garde de jour" sub="Accueil à la journée chez moi"
+                  <CheckOption label="☀️ Garde de jour (chez moi)" sub="Accueil à la journée chez moi"
+                    checked={modeGardeJourPetsi} onToggle={() => setModeGardeJourPetsi(!modeGardeJourPetsi)} />
+                  <CheckOption label="🏡 Garde chez le propriétaire" sub="Je surveille l'animal chez lui"
                     checked={modeGardeJour} onToggle={() => setModeGardeJour(!modeGardeJour)} />
                   <CheckOption label="🏨 Pension" sub="Hébergement nuit et jour chez moi"
                     checked={modePension} onToggle={() => setModePension(!modePension)} />
@@ -514,9 +959,11 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                 <SectionLabel label="Mes tarifs" />
                 <Card>
                   <Text style={ps.cardHint}>Fourchette colorée : 🟢 économique · 🟡 dans la moyenne · 🔴 premium</Text>
-                  <PriceInput label="Promenade"     icon="🚶" type="promenade" value={prixPromenade} onChange={setPrixPromenade} />
-                  <PriceInput label="Pension"       icon="🏨" type="pension"   value={prixPension}   onChange={setPrixPension}   />
-                  <PriceInput label="Garde de jour" icon="☀️" type="gardeJour" value={prixGardeJour} onChange={setPrixGardeJour} />
+                  <PriceInput label="Garde de jour (chez moi)"            icon="☀️" type="gardeJour" value={prixGardeJourPetsi} onChange={setPrixGardeJourPetsi} />
+                  <PriceInput label="Garde au domicile du propriétaire"  icon="🏡" type="gardeJour" value={prixGardeJour}      onChange={setPrixGardeJour}      />
+                  <PriceInput label="Nuitée / Pension"                   icon="🌙" type="pension"   value={prixPension}        onChange={setPrixPension}        />
+                  <PriceInput label="Promenade"                          icon="🐕" type="promenade" value={prixPromenade}      onChange={setPrixPromenade}      />
+                  <PriceInput label="Visite à domicile"                  icon="🐱" type="visite"    value={prixVisite}         onChange={setPrixVisite}         />
                 </Card>
 
                 {/* Expérience */}
@@ -596,22 +1043,213 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
 
             {/* ── Bouton sauvegarder / valider ── */}
             <TouchableOpacity
-              style={[ps.saveBtn, isPetsitter && !profilComplet && isProfilComplet() && ps.saveBtnReady]}
-              onPress={handleSauvegarder}
+              style={[ps.saveBtn, isPetsitter && !profilComplet && isProfilComplet() && ps.saveBtnReady, saving && { opacity: 0.7 }]}
+              onPress={saving ? undefined : handleSauvegarder}
+              disabled={saving}
               activeOpacity={0.8}
             >
-              <Text style={ps.saveText}>
-                {isPetsitter && !profilComplet && isProfilComplet()
-                  ? '🎉 Valider mon profil'
-                  : isPetsitter && profilComplet
-                  ? '💾 Sauvegarder les modifications'
-                  : isPetsitter
-                  ? '💾 Sauvegarder (profil petsitter incomplet)'
-                  : '💾 Sauvegarder'}
-              </Text>
+              {saving
+                ? <ActivityIndicator color={COLORS.white} />
+                : <Text style={ps.saveText}>
+                    {isPetsitter && !profilComplet && isProfilComplet()
+                      ? '🎉 Valider mon profil'
+                      : isPetsitter && profilComplet
+                      ? '💾 Sauvegarder les modifications'
+                      : isPetsitter
+                      ? '💾 Sauvegarder (profil pawsitter incomplet)'
+                      : '💾 Sauvegarder'}
+                  </Text>
+              }
             </TouchableOpacity>
           </>
         )}
+
+        {/* ════════ DISPONIBILITÉS ════════ */}
+        {activeTab === 'dispo' && (
+          <>
+            {/* Header compact */}
+            <View style={ps.dispoHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={ps.dispoTitle}>Mes disponibilités</Text>
+                <Text style={ps.dispoSub}>Appuie sur les jours pour les activer</Text>
+              </View>
+              {dispoDates.size > 0 && !savingDispo && (
+                <TouchableOpacity onPress={handleClearDispo} activeOpacity={0.7}>
+                  <Text style={ps.dispoEffacerText}>Tout effacer</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {loadingDispo ? (
+              <ActivityIndicator size="large" color={COLORS.bark} style={{ marginTop: 32 }} />
+            ) : (
+              <CalendrierDispo
+                selected={dispoDates}
+                onToggle={handleToggleDispo}
+                onAddMany={handleAddManyDispo}
+              />
+            )}
+
+            {/* Bouton sauvegarder */}
+            <TouchableOpacity
+              style={[ps.dispoSaveBtn, dispoSaved && ps.dispoSaveBtnDone, savingDispo && { opacity: 0.6 }]}
+              onPress={() => triggerAutoSave(dispoDates)}
+              disabled={savingDispo}
+              activeOpacity={0.8}
+            >
+              {savingDispo
+                ? <ActivityIndicator size="small" color={COLORS.white} />
+                : <Text style={ps.dispoSaveBtnText}>{dispoSaved ? '✓ Disponibilités sauvegardées' : '💾 Sauvegarder mes dispos'}</Text>
+              }
+            </TouchableOpacity>
+          </>
+        )}
+
+        {/* ════════ PHOTOS GARDES ════════ */}
+        {activeTab === 'photos' && (() => {
+          const PHOTO_SIZE = (Dimensions.get('window').width - 32 - 8) / 2;
+          return (
+            <>
+              {/* Header */}
+              <View style={ps.photosHeader}>
+                <View>
+                  <Text style={ps.photosTitle}>Galerie de gardes</Text>
+                  <Text style={ps.photosSub}>
+                    {gardePhotos.length > 0
+                      ? `${gardePhotos.length} photo${gardePhotos.length > 1 ? 's' : ''}`
+                      : 'Montre tes plus belles gardes'}
+                  </Text>
+                </View>
+                <TouchableOpacity style={ps.photosAddBtn} onPress={openAddPhotoModal} activeOpacity={0.8}>
+                  <Text style={ps.photosAddBtnText}>+ Ajouter</Text>
+                </TouchableOpacity>
+              </View>
+
+              {loadingPhotos ? (
+                <ActivityIndicator size="large" color={COLORS.bark} style={{ marginTop: 40 }} />
+              ) : gardePhotos.length === 0 ? (
+                <TouchableOpacity style={ps.photosEmpty} onPress={openAddPhotoModal} activeOpacity={0.8}>
+                  <Text style={ps.photosEmptyIcon}>📷</Text>
+                  <Text style={ps.photosEmptyTitle}>Aucune photo pour l'instant</Text>
+                  <Text style={ps.photosEmptySub}>Ajoute des photos de tes gardes pour enrichir ton profil</Text>
+                  <View style={ps.photosEmptyBtn}><Text style={ps.photosEmptyBtnText}>Ajouter une photo</Text></View>
+                </TouchableOpacity>
+              ) : (
+                <View style={ps.photosGrid}>
+                  {gardePhotos.map(p => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[ps.photoItem, { width: PHOTO_SIZE, height: PHOTO_SIZE }]}
+                      onPress={() => setViewingPhoto(p)}
+                      onLongPress={() => confirmDeletePhoto(p.id, p.url)}
+                      activeOpacity={0.9}
+                    >
+                      <Image source={{ uri: p.url }} style={ps.photoItemImg} />
+                      {p.caption ? (
+                        <View style={ps.photoItemCaption}>
+                          <Text style={ps.photoItemCaptionText} numberOfLines={1}>{p.caption}</Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  ))}
+                  {/* Bouton + intégré dans la grille */}
+                  <TouchableOpacity
+                    style={[ps.photoItem, ps.photoItemAdd, { width: PHOTO_SIZE, height: PHOTO_SIZE }]}
+                    onPress={openAddPhotoModal}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={ps.photoItemAddIcon}>+</Text>
+                    <Text style={ps.photoItemAddLabel}>Ajouter</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* ── Viewer plein écran ── */}
+              <Modal visible={!!viewingPhoto} transparent animationType="fade" onRequestClose={() => setViewingPhoto(null)}>
+                <View style={ps.photoViewer}>
+                  <TouchableOpacity style={ps.photoViewerClose} onPress={() => setViewingPhoto(null)}>
+                    <Text style={ps.photoViewerCloseText}>✕</Text>
+                  </TouchableOpacity>
+                  {viewingPhoto && (
+                    <>
+                      <Image source={{ uri: viewingPhoto.url }} style={ps.photoViewerImg} resizeMode="contain" />
+                      {viewingPhoto.caption ? (
+                        <Text style={ps.photoViewerCaption}>{viewingPhoto.caption}</Text>
+                      ) : null}
+                      <TouchableOpacity
+                        style={ps.photoViewerDeleteBtn}
+                        onPress={() => confirmDeletePhoto(viewingPhoto.id, viewingPhoto.url)}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={ps.photoViewerDeleteText}>🗑 Supprimer</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              </Modal>
+
+              {/* ── Modal ajout photo ── */}
+              <Modal
+                visible={showAddPhotoModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => { setShowAddPhotoModal(false); setNewPhotoUri(null); setSavingPhoto(false); }}
+              >
+                <View style={ps.addPhotoOverlay}>
+                  <View style={ps.addPhotoBox}>
+                    <Text style={ps.addPhotoTitle}>Nouvelle photo</Text>
+
+                    {!newPhotoUri ? (
+                      <View style={ps.addPhotoPickerRow}>
+                        <TouchableOpacity style={ps.addPhotoPickerBtn} onPress={() => pickNewPhoto(true)} activeOpacity={0.8}>
+                          <Text style={ps.addPhotoPickerIcon}>📸</Text>
+                          <Text style={ps.addPhotoPickerLabel}>Caméra</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={ps.addPhotoPickerBtn} onPress={() => pickNewPhoto(false)} activeOpacity={0.8}>
+                          <Text style={ps.addPhotoPickerIcon}>🖼</Text>
+                          <Text style={ps.addPhotoPickerLabel}>Galerie</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <>
+                        <Image source={{ uri: newPhotoUri }} style={ps.addPhotoPreview} resizeMode="cover" />
+                        <TouchableOpacity onPress={() => setNewPhotoUri(null)} activeOpacity={0.7} style={{ alignSelf: 'center', marginBottom: 10 }}>
+                          <Text style={{ fontSize: 12, color: COLORS.muted }}>Changer de photo</Text>
+                        </TouchableOpacity>
+                        <TextInput
+                          style={ps.addPhotoCaptionInput}
+                          placeholder="Légende (optionnel)"
+                          placeholderTextColor={COLORS.muted}
+                          value={newPhotoCaption}
+                          onChangeText={setNewPhotoCaption}
+                        />
+                        <TouchableOpacity
+                          style={[ps.addPhotoSaveBtn, savingPhoto && { opacity: 0.6 }]}
+                          onPress={saveNewPhoto}
+                          disabled={savingPhoto}
+                          activeOpacity={0.8}
+                        >
+                          {savingPhoto
+                            ? <ActivityIndicator color={COLORS.white} />
+                            : <Text style={ps.addPhotoSaveBtnText}>✓ Publier la photo</Text>
+                          }
+                        </TouchableOpacity>
+                      </>
+                    )}
+
+                    <TouchableOpacity
+                      onPress={() => { setShowAddPhotoModal(false); setNewPhotoUri(null); setNewPhotoCaption(''); setSavingPhoto(false); }}
+                      style={{ alignItems: 'center', marginTop: 12 }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: COLORS.clay, fontSize: 14 }}>Annuler</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </Modal>
+            </>
+          );
+        })()}
 
         {/* ════════ PARAMÈTRES ════════ */}
         {activeTab === 'params' && (
@@ -745,10 +1383,20 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                 style={ps.linkRow}
                 onPress={() => Alert.alert(
                   'Supprimer le compte',
-                  'Cette action est irréversible. Toutes tes données seront effacées.',
+                  'Cette action est irréversible. Toutes tes données seront effacées définitivement.',
                   [
                     { text: 'Annuler', style: 'cancel' },
-                    { text: 'Supprimer définitivement', style: 'destructive', onPress: () => {} },
+                    {
+                      text: 'Supprimer définitivement', style: 'destructive',
+                      onPress: async () => {
+                        try {
+                          await supabase.rpc('delete_my_account');
+                          onLogout();
+                        } catch (e) {
+                          Alert.alert('Erreur', e?.message ?? 'Impossible de supprimer le compte.');
+                        }
+                      },
+                    },
                   ]
                 )}
                 activeOpacity={0.7}
@@ -764,6 +1412,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
         )}
 
       </ScrollView>
+
     </View>
   );
 }
@@ -775,18 +1424,26 @@ const ps = StyleSheet.create({
 
   // ── Tabs ──
   tabBar: {
-    flexDirection: 'row', gap: 6,
-    backgroundColor: COLORS.sand,
-    paddingHorizontal: 14, paddingVertical: 10,
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 10, paddingVertical: 8,
     borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    shadowColor: '#1A2756', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  tabPill: {
+    position: 'absolute',
+    top: 8, bottom: 8,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.bark,
   },
   tabBtn: {
     flex: 1, paddingVertical: 8, alignItems: 'center',
-    borderRadius: RADIUS.full,
+    zIndex: 1,
   },
-  tabBtnActive:    { backgroundColor: COLORS.bark },
-  tabBtnText:      { fontSize: 13, ...FONTS.medium, color: COLORS.muted },
-  tabBtnTextActive:{ fontSize: 13, ...FONTS.bold, color: COLORS.white },
+  tabBtnText:      { fontSize: 12, ...FONTS.medium, color: COLORS.muted },
+  tabBtnTextActive:{ fontSize: 12, ...FONTS.bold, color: COLORS.white },
 
   // ── Hero ──
   heroSection: { alignItems: 'center', paddingTop: 24, paddingBottom: 0, paddingHorizontal: 20, backgroundColor: COLORS.ink },
@@ -968,4 +1625,76 @@ const ps = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 2, borderColor: COLORS.white,
   },
+
+  photoWarning: {
+    backgroundColor: COLORS.warnBg,
+    borderWidth: 1, borderColor: COLORS.warnBorder,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: 14, paddingVertical: 8,
+    marginTop: 10,
+  },
+  photoWarningText: { fontSize: 12, color: COLORS.clay, textAlign: 'center', ...FONTS.medium },
+
+  dispoHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  dispoTitle:       { fontSize: 18, ...FONTS.heavy, color: COLORS.ink },
+  dispoSub:         { fontSize: 13, color: COLORS.muted, marginTop: 2 },
+  dispoSavedBadge:  { fontSize: 12, ...FONTS.bold, color: COLORS.bark },
+  dispoEffacerText: { fontSize: 12, color: COLORS.clay, ...FONTS.medium },
+  dispoSaveBtn:     { marginTop: 16, backgroundColor: COLORS.bark, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  dispoSaveBtnDone: { backgroundColor: '#2E7D32' },
+  dispoSaveBtnText: { color: COLORS.white, fontSize: 15, ...FONTS.bold },
+
+  // ── Photos ──
+  photosHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  photosTitle:  { fontSize: 18, ...FONTS.heavy, color: COLORS.ink },
+  photosSub:    { fontSize: 13, color: COLORS.muted, marginTop: 2 },
+  photosAddBtn: { backgroundColor: COLORS.bark, borderRadius: RADIUS.full, paddingHorizontal: 14, paddingVertical: 8 },
+  photosAddBtnText: { fontSize: 13, ...FONTS.bold, color: COLORS.white },
+
+  photosEmpty: { alignItems: 'center', paddingVertical: 40, paddingHorizontal: 24 },
+  photosEmptyIcon:  { fontSize: 48, marginBottom: 12 },
+  photosEmptyTitle: { fontSize: 16, ...FONTS.heavy, color: COLORS.ink, textAlign: 'center', marginBottom: 6 },
+  photosEmptySub:   { fontSize: 13, color: COLORS.muted, textAlign: 'center', lineHeight: 19, marginBottom: 20 },
+  photosEmptyBtn:   { backgroundColor: COLORS.bark, borderRadius: RADIUS.full, paddingHorizontal: 20, paddingVertical: 10 },
+  photosEmptyBtnText: { fontSize: 14, ...FONTS.bold, color: COLORS.white },
+
+  photosGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  photoItem:  { borderRadius: RADIUS.md, overflow: 'hidden', backgroundColor: COLORS.sand },
+  photoItemImg: { width: '100%', height: '100%' },
+  photoItemCaption: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 8, paddingVertical: 4 },
+  photoItemCaptionText: { fontSize: 11, color: COLORS.white },
+  photoItemAdd: { backgroundColor: COLORS.sand, borderWidth: 1.5, borderColor: COLORS.border, borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  photoItemAddIcon:  { fontSize: 28, color: COLORS.muted },
+  photoItemAddLabel: { fontSize: 12, color: COLORS.muted, ...FONTS.medium },
+
+  photoViewer:        { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' },
+  photoViewerClose:   { position: 'absolute', top: 52, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', zIndex: 10 },
+  photoViewerCloseText: { fontSize: 16, color: COLORS.white, ...FONTS.bold },
+  photoViewerImg:     { width: '100%', aspectRatio: 1 },
+  photoViewerCaption: { marginTop: 16, fontSize: 15, color: COLORS.white, textAlign: 'center', paddingHorizontal: 24 },
+  photoViewerDeleteBtn: { marginTop: 20, backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: RADIUS.md, paddingHorizontal: 24, paddingVertical: 10 },
+  photoViewerDeleteText: { fontSize: 14, color: '#FF6B6B', ...FONTS.bold },
+
+  addPhotoOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  addPhotoBox:     { backgroundColor: COLORS.white, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: 36 },
+  addPhotoTitle:   { fontSize: 18, ...FONTS.heavy, color: COLORS.ink, marginBottom: 20, textAlign: 'center' },
+  addPhotoPickerRow: { flexDirection: 'row', gap: 16, marginBottom: 16 },
+  addPhotoPickerBtn: { flex: 1, backgroundColor: COLORS.sand, borderRadius: RADIUS.md, padding: 20, alignItems: 'center', gap: 8 },
+  addPhotoPickerIcon: { fontSize: 36 },
+  addPhotoPickerLabel: { fontSize: 14, ...FONTS.bold, color: COLORS.ink },
+  addPhotoPreview: { width: '100%', height: 200, borderRadius: RADIUS.md, marginBottom: 8 },
+  addPhotoCaptionInput: { backgroundColor: COLORS.sand, borderRadius: RADIUS.md, padding: 12, fontSize: 14, color: COLORS.ink, borderWidth: 1, borderColor: COLORS.border, marginBottom: 14 },
+  addPhotoSaveBtn: { backgroundColor: COLORS.bark, borderRadius: RADIUS.md, padding: 15, alignItems: 'center' },
+  addPhotoSaveBtnText: { fontSize: 15, ...FONTS.heavy, color: COLORS.white },
+
+
+  // ── Sélecteur de date inline (InlineDatePicker) ──
+  dayBtn:     { alignItems: 'center', padding: 10, marginRight: 8, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.white, minWidth: 58 },
+  dayBtnSel:  { backgroundColor: COLORS.bark, borderColor: COLORS.bark },
+  dayName:    { fontSize: 11, color: COLORS.muted, ...FONTS.medium },
+  dayNameSel: { color: 'rgba(255,255,255,0.8)' },
+  dayNum:     { fontSize: 20, ...FONTS.heavy, color: COLORS.ink, marginVertical: 2 },
+  dayNumSel:  { color: COLORS.white },
+  dayMon:     { fontSize: 11, color: COLORS.muted },
+  dayMonSel:  { color: 'rgba(255,255,255,0.8)' },
 });

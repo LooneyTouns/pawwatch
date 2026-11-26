@@ -235,20 +235,28 @@ export default function JournalFormScreen({ garde, user, onSubmit, onBack }) {
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
+    if (!garde?.id) {
+      Alert.alert('Erreur', 'Aucune garde en cours : le journal ne peut pas être enregistré.');
+      return;
+    }
     setLoading(true);
     try {
       const coords = promenade ? await getLocation() : null;
       const now    = new Date().toTimeString().slice(0, 5);
+      const sorties = parseInt(nbSorties, 10);
 
-      const journal = await soumettreJournal(garde?.id ?? 'demo', {
+      const journal = await soumettreJournal(garde.id, {
         date:               new Date().toISOString(),
         humeur_arrivee:     humeurArrivee,
+        repas_done:         repas !== 'rien',
+        repas_heure:        now,
         repas_quantite:     repas,
         repas_eau:          repasEau,
-        nb_sorties:         nbSorties,
+        nb_sorties:         Number.isNaN(sorties) ? null : sorties,
         accident,
         promenade_done:     promenade,
-        duree_promenade:    dureePromenade,
+        promenade_heure:    promenade ? now : null,
+        promenade_duree:    promenade ? dureePromenade : null,
         promenade_coords:   coords,
         jeux,
         type_jeux:          typeJeux,
@@ -258,16 +266,16 @@ export default function JournalFormScreen({ garde, user, onSubmit, onBack }) {
         comportement,
         vomissement,
         medicament,
-        desc_medicament:    descMedicament,
-        note_sante:         noteSante,
+        desc_medicament:    descMedicament || null,
+        note_sante:         noteSante || null,
         humeur,
-        message,
+        note:               message.trim(),
         gardien_id:         user?.id,
-      }).catch(() => ({ id: 'demo-journal' }));
+      });
 
-      if (photoPromenade) await uploadPhoto(journal.id, 'promenade', photoPromenade).catch(() => {});
-      photos.forEach((p, i) => {
-        if (p) uploadPhoto(journal.id, `photo_${i}`, p).catch(() => {});
+      if (photoPromenade) await uploadPhoto(journal.id, 'promenade', photoPromenade, user?.id).catch((e) => console.warn('[uploadPhoto promenade]', e?.message));
+      photos.forEach((p) => {
+        if (p) uploadPhoto(journal.id, 'jour', p, user?.id).catch((e) => console.warn('[uploadPhoto jour]', e?.message));
       });
 
       await sendLocalNotification({
@@ -295,6 +303,14 @@ export default function JournalFormScreen({ garde, user, onSubmit, onBack }) {
 
   // ── Écran succès ──
   if (submitted) return <SuccessScreen garde={garde} />;
+
+  // Bannière rappel : visible après 19h si aucun journal envoyé aujourd'hui
+  const showReminder = (() => {
+    if (!garde) return false;
+    if (new Date().getHours() < 19) return false;
+    const today = new Date().toISOString().slice(0, 10);
+    return !(garde.journaux ?? []).some(j => (j.date ?? j.created_at ?? '').startsWith(today));
+  })();
 
   const animal    = garde?.animaux;
   const nomAnimal = animal?.nom ?? 'votre animal';
@@ -336,6 +352,15 @@ export default function JournalFormScreen({ garde, user, onSubmit, onBack }) {
           📌 Ce rapport quotidien est envoyé au propriétaire pour le rassurer. Soyez précis et chaleureux !
         </Text>
       </View>
+
+      {showReminder && (
+        <View style={styles.reminderBanner}>
+          <Text style={styles.reminderIcon}>🌙</Text>
+          <Text style={styles.reminderText}>
+            Il est {new Date().getHours()}h — le journal du soir n'a pas encore été envoyé au propriétaire.
+          </Text>
+        </View>
+      )}
 
       {/* ══════════════════════════════════════
           1. ARRIVÉE
@@ -693,6 +718,14 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md, padding: 12, marginBottom: 14,
   },
   infoText: { fontSize: 12, color: COLORS.moss, lineHeight: 18 },
+
+  reminderBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: '#FFF7ED', borderWidth: 1.5, borderColor: '#F59E0B',
+    borderRadius: RADIUS.md, padding: 12, marginBottom: 14,
+  },
+  reminderIcon: { fontSize: 20 },
+  reminderText: { flex: 1, fontSize: 13, color: '#92400E', lineHeight: 18 },
 
   alertBox: {
     backgroundColor: COLORS.warnBg, borderWidth: 1, borderColor: COLORS.warnBorder,
