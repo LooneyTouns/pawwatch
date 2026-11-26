@@ -9,50 +9,13 @@ import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
 import { Badge, Avatar, Card, SectionLabel } from '../../components/UI';
 import { getJournaux, validerJournal, marquerGardeTerminee, soumettreAvis, hasAvis, getHistoriqueProprio, getMesDemandesOuvertes, annulerDemandeOuverte, creerDemandeOuverte, modifierDemandeOuverte, getAnimaux } from '../../lib/supabase';
 import { sendLocalNotification } from '../../hooks/useNotifications';
+import DemandeGardeModal from '../../components/DemandeGardeModal';
 
 const DOG_ICON = require('../../assets/dog-icon.png');
 const CAT_ICON = require('../../assets/cat-icon.png');
 
 const ANIMAL_EMOJI = { chien: '🐕', chat: '🐈', lapin: '🐇', rongeur: '🐹', oiseau: '🐦', reptile: '🦎', autre: '🐾' };
 const formatDateFr = (str) => new Date(str + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-const MONTHS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-
-const InlineDatePicker = ({ label, date, onSelect }) => {
-  const today = new Date();
-  const days = Array.from({ length: 21 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return d;
-  });
-  return (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={dpStyles.label}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          {days.map(d => {
-            const iso = d.toISOString().split('T')[0];
-            const sel = date?.toISOString().split('T')[0] === iso;
-            return (
-              <TouchableOpacity key={iso} style={[dpStyles.day, sel && dpStyles.daySelected]} onPress={() => onSelect(d)} activeOpacity={0.75}>
-                <Text style={[dpStyles.dayMon, sel && dpStyles.dayMonSel]}>{MONTHS_FR[d.getMonth()]}</Text>
-                <Text style={[dpStyles.dayNum, sel && dpStyles.dayNumSel]}>{d.getDate()}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </View>
-  );
-};
-const dpStyles = StyleSheet.create({
-  label:       { fontSize: 11, ...FONTS.bold, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
-  day:         { width: 48, paddingVertical: 8, alignItems: 'center', borderRadius: RADIUS.sm, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.white },
-  daySelected: { backgroundColor: COLORS.bark, borderColor: COLORS.bark },
-  dayMon:      { fontSize: 10, color: COLORS.muted, ...FONTS.medium },
-  dayMonSel:   { color: 'rgba(255,255,255,0.8)' },
-  dayNum:      { fontSize: 18, ...FONTS.heavy, color: COLORS.ink },
-  dayNumSel:   { color: COLORS.white },
-});
 
 const AnimalAvatar = ({ animal, size = 60 }) => {
   if (animal?.photo) {
@@ -175,31 +138,16 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
   const [mesAnimaux,       setMesAnimaux]       = useState([]);
   const [showDemandeModal, setShowDemandeModal] = useState(false);
   const [editingDemande,   setEditingDemande]   = useState(null); // null = création, objet = édition
-  const [demandeAnimaux,   setDemandeAnimaux]   = useState([]);   // animaux sélectionnés (multi)
-  const [demandeDebut,     setDemandeDebut]     = useState(null);
-  const [demandeFin,       setDemandeFin]       = useState(null);
-  const [demandeMsg,       setDemandeMsg]       = useState('');
-  const [savingDemande,    setSavingDemande]    = useState(false);
 
-  const resetDemandeForm = () => {
-    setEditingDemande(null);
-    setDemandeAnimaux([]);
-    setDemandeDebut(null);
-    setDemandeFin(null);
-    setDemandeMsg('');
-  };
+  const resetDemandeForm = () => setEditingDemande(null);
 
   const openCreerDemande = () => {
-    resetDemandeForm();
+    setEditingDemande(null);
     setShowDemandeModal(true);
   };
 
   const openEditerDemande = (d) => {
     setEditingDemande(d);
-    setDemandeAnimaux(d.animaux ?? []);
-    setDemandeDebut(d.date_debut ? new Date(d.date_debut + 'T12:00:00') : null);
-    setDemandeFin(d.date_fin   ? new Date(d.date_fin   + 'T12:00:00') : null);
-    setDemandeMsg(d.message ?? '');
     setShowDemandeModal(true);
   };
 
@@ -211,43 +159,25 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
     getAnimaux(user.id).then(setMesAnimaux).catch(() => {});
   }, [user?.id]);
 
-  const handleSauvegarderDemande = async () => {
-    if (!demandeDebut || !demandeFin) {
-      Alert.alert('Dates manquantes', 'Choisis une date de début et de fin.');
-      return;
-    }
-    setSavingDemande(true);
-    const animal_ids = demandeAnimaux.map(a => a.id).filter(Boolean);
-    try {
-      if (editingDemande) {
-        await modifierDemandeOuverte(editingDemande.id, {
-          date_debut: demandeDebut.toISOString().split('T')[0],
-          date_fin:   demandeFin.toISOString().split('T')[0],
-          message:    demandeMsg.trim() || null,
-          animal_ids,
-        });
-      } else {
-        await creerDemandeOuverte({
-          proprio_id: user.id,
-          animal_ids,
-          date_debut: demandeDebut.toISOString().split('T')[0],
-          date_fin:   demandeFin.toISOString().split('T')[0],
-          message:    demandeMsg.trim() || null,
-        });
-      }
-      const list = await getMesDemandesOuvertes(user.id);
-      setMesDemandes(list);
-      setShowDemandeModal(false);
-      resetDemandeForm();
-      Alert.alert(
-        editingDemande ? '✓ Demande modifiée' : '✓ Demande publiée',
-        editingDemande ? 'Les modifications sont enregistrées.' : 'Elle est maintenant visible par les pawsitters compatibles.'
-      );
-    } catch {
-      Alert.alert('Erreur', editingDemande ? 'Impossible de modifier la demande.' : 'Impossible de publier la demande.');
-    } finally {
-      setSavingDemande(false);
-    }
+  // Les erreurs remontent jusqu'au formulaire, qui les affiche sans perdre la saisie.
+  const handleSauvegarderDemande = async ({ animaux, debut, fin, message }) => {
+    const payload = {
+      date_debut: debut,
+      date_fin:   fin,
+      message:    message || null,
+      animal_ids: animaux.map(a => a.id),
+    };
+    const etaitEdition = !!editingDemande;
+    if (etaitEdition) await modifierDemandeOuverte(editingDemande.id, payload);
+    else              await creerDemandeOuverte({ proprio_id: user.id, ...payload });
+
+    setShowDemandeModal(false);
+    resetDemandeForm();
+    getMesDemandesOuvertes(user.id).then(setMesDemandes).catch(() => {});
+    Alert.alert(
+      etaitEdition ? '✓ Demande modifiée' : '✓ Demande publiée',
+      etaitEdition ? 'Les modifications sont enregistrées.' : 'Elle est maintenant visible par les pawsitters compatibles.'
+    );
   };
 
   const handleAnnulerDemande = (id) => {
@@ -371,96 +301,25 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
         )}
       </ScrollView>
 
-      {/* Modal créer / modifier demande */}
-      <Modal visible={showDemandeModal} animationType="slide" transparent onRequestClose={() => { setShowDemandeModal(false); resetDemandeForm(); }}>
-        <View style={styles.demandeModalOverlay}>
-          <View style={styles.demandeModalBox}>
-            <Text style={styles.demandeModalTitre}>
-              {editingDemande ? 'Modifier la demande' : 'Créer une demande de garde'}
-            </Text>
-            <Text style={styles.demandeModalSub}>
-              {editingDemande
-                ? 'Modifie les dates, les animaux ou le message.'
-                : 'Visible par tous les pawsitters dont le profil correspond — pas besoin de choisir toi-même.'}
-            </Text>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {mesAnimaux.length > 0 && (
-                <View style={{ marginBottom: 16 }}>
-                  <Text style={styles.fieldLabel}>ANIMAUX CONCERNÉS</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {mesAnimaux.map(a => {
-                      const sel = demandeAnimaux.some(x => x.id === a.id);
-                      const emoji = ANIMAL_EMOJI[(a.espece ?? a.type)?.toLowerCase()] ?? '🐾';
-                      return (
-                        <TouchableOpacity
-                          key={a.id ?? a.nom}
-                          style={[styles.animalChip, sel && styles.animalChipSel]}
-                          onPress={() => setDemandeAnimaux(prev =>
-                            sel ? prev.filter(x => x.id !== a.id) : [...prev, a]
-                          )}
-                          activeOpacity={0.75}
-                        >
-                          <Text style={[styles.animalChipText, sel && styles.animalChipTextSel]}>
-                            {sel ? '✓ ' : ''}{emoji} {a.nom || 'Animal'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  {demandeAnimaux.length === 0 && (
-                    <Text style={styles.animalChipHint}>Aucun sélectionné = tous les animaux</Text>
-                  )}
-                </View>
-              )}
-              <InlineDatePicker label="DATE DE DÉBUT" date={demandeDebut} onSelect={setDemandeDebut} />
-              <InlineDatePicker label="DATE DE FIN" date={demandeFin} onSelect={d => {
-                if (demandeDebut && d < demandeDebut) {
-                  Alert.alert('Date invalide', 'La fin doit être après le début.');
-                  return;
-                }
-                setDemandeFin(d);
-              }} />
-              <Text style={styles.fieldLabel}>MESSAGE (optionnel)</Text>
-              <TextInput
-                style={styles.demandeMsgInput}
-                placeholder="Habitudes de ton animal, précisions sur la garde…"
-                placeholderTextColor={COLORS.border}
-                value={demandeMsg}
-                onChangeText={setDemandeMsg}
-                multiline
-                maxLength={300}
-              />
-            </ScrollView>
-            <TouchableOpacity
-              style={[styles.demandePublishBtn, (!demandeDebut || !demandeFin || savingDemande) && { opacity: 0.5 }]}
-              onPress={handleSauvegarderDemande}
-              disabled={!demandeDebut || !demandeFin || savingDemande}
-              activeOpacity={0.85}
-            >
-              {savingDemande
-                ? <ActivityIndicator color={COLORS.white} />
-                : <Text style={styles.demandePublishText}>
-                    {editingDemande ? '💾 Sauvegarder les modifications' : '📤 Publier la demande'}
-                  </Text>
-              }
-            </TouchableOpacity>
-            {editingDemande && (
-              <TouchableOpacity
-                style={[styles.demandeCancelModalBtn, { borderTopWidth: 1, borderTopColor: COLORS.warnBorder, marginTop: 8 }]}
-                onPress={() => handleAnnulerDemande(editingDemande.id)}
-              >
-                <Text style={[styles.demandeCancelModalText, { color: COLORS.clay }]}>🗑 Annuler cette demande</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              onPress={() => { setShowDemandeModal(false); resetDemandeForm(); }}
-              style={styles.demandeCancelModalBtn}
-            >
-              <Text style={styles.demandeCancelModalText}>Fermer</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      <DemandeGardeModal
+        visible={showDemandeModal}
+        onClose={() => { setShowDemandeModal(false); resetDemandeForm(); }}
+        mode="ouverte"
+        titre={editingDemande ? 'Modifier la demande' : 'Nouvelle demande de garde'}
+        sousTitre={editingDemande
+          ? 'Change les animaux, les dates ou le message.'
+          : 'Visible par tous les pawsitters compatibles, tu n\'as pas à en choisir un.'}
+        mesAnimaux={mesAnimaux}
+        initial={editingDemande ? {
+          animaux: editingDemande.animaux,
+          debut:   editingDemande.date_debut,
+          fin:     editingDemande.date_fin,
+          message: editingDemande.message,
+        } : null}
+        submitLabel={editingDemande ? '💾 Enregistrer les modifications' : '📢 Publier la demande'}
+        onSubmit={handleSauvegarderDemande}
+        onDelete={editingDemande ? () => handleAnnulerDemande(editingDemande.id) : undefined}
+      />
     </View>
   );
 
@@ -913,7 +772,6 @@ const styles = StyleSheet.create({
   demandeActions:{ flexDirection: 'column', alignItems: 'flex-end', gap: 6 },
   demandeEditBadge:{ backgroundColor: COLORS.warm, borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4, borderWidth: 1, borderColor: COLORS.bark },
   demandeEditText: { fontSize: 12, ...FONTS.bold, color: COLORS.bark },
-  animalChipHint: { fontSize: 12, color: COLORS.muted, marginTop: 6, fontStyle: 'italic' },
   demandeDates:  { fontSize: 14, ...FONTS.bold, color: COLORS.ink, marginBottom: 2, textTransform: 'capitalize' },
   demandeAnimal: { fontSize: 13, color: COLORS.muted, marginBottom: 4 },
   demandeMsg:    { fontSize: 12, color: COLORS.ink, fontStyle: 'italic' },
@@ -924,22 +782,6 @@ const styles = StyleSheet.create({
   demandeVide:       { alignItems: 'center', paddingVertical: 20 },
   demandeVideTitle:  { fontSize: 15, ...FONTS.bold, color: COLORS.ink, marginTop: 10 },
   demandeVideSub:    { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginTop: 6, lineHeight: 19 },
-
-  fieldLabel:    { fontSize: 11, ...FONTS.bold, color: COLORS.muted, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 },
-  animalChip:    { borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.full, paddingHorizontal: 14, paddingVertical: 8, backgroundColor: COLORS.white },
-  animalChipSel: { backgroundColor: COLORS.bark, borderColor: COLORS.bark },
-  animalChipText:    { fontSize: 13, ...FONTS.medium, color: COLORS.ink },
-  animalChipTextSel: { color: COLORS.white },
-
-  demandeModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  demandeModalBox: { backgroundColor: COLORS.cream, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl, padding: 24, maxHeight: '85%' },
-  demandeModalTitre: { fontSize: 20, ...FONTS.heavy, color: COLORS.ink, marginBottom: 4 },
-  demandeModalSub:   { fontSize: 13, color: COLORS.muted, marginBottom: 20, lineHeight: 19 },
-  demandeMsgInput:   { backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: 12, fontSize: 14, color: COLORS.ink, minHeight: 70, textAlignVertical: 'top', marginBottom: 8 },
-  demandePublishBtn:  { backgroundColor: COLORS.moss, borderRadius: RADIUS.md, padding: 16, alignItems: 'center', marginTop: 16 },
-  demandePublishText: { fontSize: 16, ...FONTS.heavy, color: COLORS.white },
-  demandeCancelModalBtn:  { padding: 14, alignItems: 'center', marginTop: 4 },
-  demandeCancelModalText: { fontSize: 14, color: COLORS.muted, ...FONTS.medium },
 
   histCard:      { marginBottom: 10 },
   histRow:       { flexDirection: 'row', alignItems: 'center' },

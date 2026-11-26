@@ -2,16 +2,18 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View, Text, StyleSheet, Animated, PanResponder,
-  TouchableOpacity, Modal, ScrollView, Alert, Dimensions, Image, ActivityIndicator, TextInput,
+  TouchableOpacity, Modal, ScrollView, Alert, Dimensions, Image, ActivityIndicator,
 } from 'react-native';
 
 const EARTH_ICON = require('../../assets/earth-icon.png');
 import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
 import { Avatar, Badge } from '../../components/UI';
+import DemandeGardeModal from '../../components/DemandeGardeModal';
 import {
   creerGarde, getPawsitters, getAnimaux, getUserProfile,
   creerDemandeOuverte, getMesDemandesOuvertes, annulerDemandeOuverte,
 } from '../../lib/supabase';
+import { SERVICE_MAP, getTarifService, nbUnitesFacturees } from '../../lib/services';
 import { calculerCompatibilite, matchColor } from '../../lib/matching';
 import MapScreen from './MapScreen';
 import * as Location from 'expo-location';
@@ -19,48 +21,10 @@ import * as Location from 'expo-location';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.28;
 
-const MONTHS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-
-function DatePicker({ label, date, onSelect }) {
-  const today = new Date();
-  const days = Array.from({ length: 14 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return d;
-  });
-  return (
-    <View style={{ marginBottom: 16 }}>
-      <Text style={dp.label}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {days.map((d, i) => {
-          const sel = date && d.toDateString() === date.toDateString();
-          return (
-            <TouchableOpacity key={i} onPress={() => onSelect(d)}
-              style={[dp.dayBtn, sel && dp.dayBtnSel]}>
-              <Text style={[dp.dayName, sel && dp.dayNameSel]}>
-                {['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][d.getDay()]}
-              </Text>
-              <Text style={[dp.dayNum, sel && dp.dayNumSel]}>{d.getDate()}</Text>
-              <Text style={[dp.dayMon, sel && dp.dayMonSel]}>{MONTHS[d.getMonth()]}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
-    </View>
-  );
+function formatPeriode(debut, fin) {
+  const f = iso => new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  return debut === fin ? f(debut) : `${f(debut)} → ${f(fin)}`;
 }
-
-const dp = StyleSheet.create({
-  label:      { fontSize: 13, ...FONTS.bold, color: COLORS.muted, marginBottom: 10 },
-  dayBtn:     { alignItems: 'center', padding: 10, marginRight: 8, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, backgroundColor: COLORS.cream, minWidth: 58 },
-  dayBtnSel:  { backgroundColor: COLORS.bark, borderColor: COLORS.bark },
-  dayName:    { fontSize: 11, color: COLORS.muted, ...FONTS.medium },
-  dayNum:     { fontSize: 20, ...FONTS.heavy, color: COLORS.ink, marginVertical: 2 },
-  dayMon:     { fontSize: 11, color: COLORS.muted },
-  dayNameSel: { color: 'rgba(255,255,255,0.8)' },
-  dayNumSel:  { color: COLORS.white },
-  dayMonSel:  { color: 'rgba(255,255,255,0.8)' },
-});
 
 function formatDispoDate(iso) {
   return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -240,112 +204,7 @@ const fi = StyleSheet.create({
   locDisabled: { fontSize: 13, color: COLORS.muted, fontStyle: 'italic', paddingVertical: 4 },
 });
 
-const ANIMAL_TYPE_EMOJI = { chien: '🐕', chat: '🐈', lapin: '🐇', reptile: '🦎', oiseau: '🐦', rongeur: '🐹' };
-
-const SERVICE_MAP = {
-  garde_domicile: { label: 'Garde au domicile du propriétaire', icon: '🏡', unit: '/jour',       tarifKey: 'tarif_garde_domicile' },
-  garde_jour:     { label: 'Garde de jour (chez le pawsitter)',  icon: '☀️', unit: '/jour',       tarifKey: 'tarif_garde_jour'     },
-  promenade:      { label: 'Promenade',                         icon: '🐕', unit: '/promenade',  tarifKey: 'tarif_promenade'      },
-  visite:         { label: 'Visite à domicile',                 icon: '🐱', unit: '/visite',     tarifKey: 'tarif_visite'         },
-  nuitee:         { label: 'Nuitée / Pension',                  icon: '🌙', unit: '/nuit',       tarifKey: 'tarif_nuitee'         },
-  pension:        { label: 'Nuitée / Pension',                  icon: '🌙', unit: '/nuit',       tarifKey: 'tarif_nuitee'         },
-};
-
-function getTarifService(petsitter, serviceId) {
-  if (!petsitter) return null;
-  const key = SERVICE_MAP[serviceId]?.tarifKey ?? `tarif_${serviceId}`;
-  const v = parseFloat(petsitter.onboarding?.[key]);
-  if (!isNaN(v) && v > 0) return v;
-  return petsitter.tarif ?? null;
-}
-
-function ModalDemandeOuverte({ visible, mesAnimaux, animalChoisi, setAnimalChoisi, dateDebut, dateFin, setDateDebut, setDateFin, message, setMessage, sending, onPublier, onClose }) {
-  return (
-    <Modal visible={visible} animationType="slide" transparent>
-      <View style={styles.modalOverlay}>
-        <View style={styles.modalBox}>
-          <Text style={styles.modalTitre}>📢 Publier une demande</Text>
-          <Text style={styles.modalSub}>
-            Tous les pawsitters compatibles pourront voir ta demande et l'accepter.
-          </Text>
-
-          {mesAnimaux.length > 0 && (
-            <View style={styles.animalPickerBox}>
-              <Text style={styles.animalPickerLabel}>QUEL ANIMAL À CONFIER ?</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={{ flexDirection: 'row', gap: 8 }}>
-                  {mesAnimaux.map(a => {
-                    const sel = animalChoisi?.id === a.id;
-                    const emoji = ANIMAL_TYPE_EMOJI[a.type?.toLowerCase()] ?? '🐾';
-                    return (
-                      <TouchableOpacity
-                        key={a.id}
-                        style={[styles.animalChip, sel && styles.animalChipSel]}
-                        onPress={() => setAnimalChoisi(sel ? null : a)}
-                        activeOpacity={0.75}
-                      >
-                        <Text style={[styles.animalChipText, sel && styles.animalChipTextSel]}>
-                          {emoji} {a.nom}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            </View>
-          )}
-
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <DatePicker label="DATE DE DÉBUT" date={dateDebut} onSelect={setDateDebut} />
-            <DatePicker label="DATE DE FIN" date={dateFin} onSelect={d => {
-              if (dateDebut && d < dateDebut) {
-                Alert.alert('Date invalide', 'La fin doit être après le début.');
-                return;
-              }
-              setDateFin(d);
-            }} />
-
-            <Text style={styles.msgLabel}>Message aux pawsitters (optionnel)</Text>
-            <TextInput
-              style={styles.msgInput}
-              placeholder="Infos utiles sur votre animal, vos attentes…"
-              placeholderTextColor={COLORS.border}
-              value={message}
-              onChangeText={setMessage}
-              multiline
-              maxLength={300}
-            />
-
-            {dateDebut && dateFin && (
-              <View style={styles.resumeBox}>
-                <Text style={styles.resumeText}>
-                  {Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24) + 1)} jour{Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24) + 1) > 1 ? 's' : ''}
-                </Text>
-              </View>
-            )}
-          </ScrollView>
-
-          <TouchableOpacity
-            style={[styles.envoyerBtn, { backgroundColor: '#1A2756' }, (!dateDebut || !dateFin || sending) && { opacity: 0.5 }]}
-            onPress={onPublier}
-            disabled={!dateDebut || !dateFin || sending}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.envoyerText}>
-              {sending ? 'Publication…' : '📢 Publier la demande'}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={onClose} style={styles.annulerBtn}>
-            <Text style={styles.annulerText}>Annuler</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
-
-export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch }) {
+export default function SearchPetsitterScreen({ user, onMatch }) {
   const [allPawsitters, setAllPawsitters] = useState([]);
   const [pawsitters,    setPawsitters]    = useState([]);
   const [loadingList,   setLoadingList]   = useState(true);
@@ -356,35 +215,19 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
   const [showFilters,   setShowFilters]   = useState(false);
   const [filters,       setFilters]       = useState(DEFAULT_FILTERS);
   const [userCoords,    setUserCoords]    = useState(null);
-  const [dateDebut,     setDateDebut]     = useState(null);
-  const [dateFin,       setDateFin]       = useState(null);
-  const [message,       setMessage]       = useState('');
-  const [sending,       setSending]       = useState(false);
   const [swipedRight,   setSwipedRight]   = useState([]);
   const [swipedLeft,    setSwipedLeft]    = useState([]);
   const [mesAnimaux,       setMesAnimaux]       = useState([]);
-  const [animalChoisi,     setAnimalChoisi]     = useState(null);
   const [propioOnboarding, setPropioOnboarding] = useState(null);
   const [expandedMatch,    setExpandedMatch]    = useState(false);
 
   // ── Demandes ouvertes ──────────────────────────────────────────
   const [mesDemandesOuvertes, setMesDemandesOuvertes] = useState([]);
   const [modalOuverteOpen,    setModalOuverteOpen]    = useState(false);
-  const [dateDebutO,          setDateDebutO]          = useState(null);
-  const [dateFinO,            setDateFinO]            = useState(null);
-  const [messageO,            setMessageO]            = useState('');
-  const [animalChoisiO,       setAnimalChoisiO]       = useState(null);
-  const [sendingO,            setSendingO]            = useState(false);
 
   // ── Demande privée (depuis la carte) ──────────────────────────────
   const [selectedPetsitterMap, setSelectedPetsitterMap] = useState(null);
   const [showDemandePrivee,    setShowDemandePrivee]    = useState(false);
-  const [debutPrivee,          setDebutPrivee]          = useState(null);
-  const [finPrivee,            setFinPrivee]            = useState(null);
-  const [animauxPrivee,        setAnimauxPrivee]        = useState([]);
-  const [servicePrivee,        setServicePrivee]        = useState(null);
-  const [messagePrivee,        setMessagePrivee]        = useState('');
-  const [sendingPrivee,        setSendingPrivee]        = useState(false);
 
   const position = useRef(new Animated.ValueXY()).current;
   const swipeAnim = useRef(new Animated.Value(1)).current;
@@ -437,7 +280,6 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
         try {
           const anim = await getAnimaux(user.id);
           setMesAnimaux(anim ?? []);
-          if (anim?.length === 1) setAnimalChoisi(anim[0]);
         } catch { /* silencieux */ }
       }
     })();
@@ -528,48 +370,41 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
     },
   })).current;
 
-  const handleEnvoyer = async () => {
-    if (!dateDebut || !dateFin) {
-      Alert.alert('Dates manquantes', 'Choisis une date de début et de fin.');
-      return;
-    }
-    if (dateFin < dateDebut) {
-      Alert.alert('Dates invalides', 'La date de fin doit être après la date de début.');
-      return;
-    }
-    if (mesAnimaux.length > 0 && !animalChoisi) {
-      Alert.alert('Animal manquant', 'Sélectionne l\'animal à confier au pawsitter.');
-      return;
-    }
-    setSending(true);
-    const petsitter = pawsitters[index - 1];
-    const nb_jours  = Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24)) + 1;
+  // Demande directe à un pawsitter (après un swipe ou depuis la carte).
+  // Une erreur de création remonte au formulaire, qui l'affiche sans perdre la saisie.
+  const envoyerDemandeDirecte = async (petsitter, { animaux, debut, fin, message, service, nbJours, tarif }) => {
+    await creerGarde({
+      proprio_id: user?.id,
+      gardien_id: petsitter?.id,
+      date_debut: debut,
+      date_fin:   fin,
+      message:    message || null,
+      statut:     'en_attente',
+      tarif_jour: tarif,
+      nb_jours:   tarif != null ? nbUnitesFacturees(service, nbJours) : null,
+      animal_ids: animaux.map(a => a.id),
+    });
+
+    const svc = service ? SERVICE_MAP[service] : null;
+    const lignes = [
+      '🐾 Demande de garde',
+      `📅 ${formatPeriode(debut, fin)} (${nbJours} jour${nbJours > 1 ? 's' : ''})`,
+      `🐶 ${animaux.map(a => a.nom).join(', ') || 'Non précisé'}`,
+    ];
+    if (svc)     lignes.push(`🏠 ${svc.label}${tarif != null ? ` · ${tarif} €${svc.unit}` : ''}`);
+    if (message) lignes.push(`💬 ${message}`);
+
+    setModalOpen(false);
+    setShowDemandePrivee(false);
+    // La garde est créée : un échec de la messagerie ne doit pas faire renvoyer la demande.
     try {
-      await creerGarde({
-        proprio_id:  user?.id,
-        gardien_id:  petsitter?.id,
-        date_debut:  dateDebut.toISOString().split('T')[0],
-        date_fin:    dateFin.toISOString().split('T')[0],
-        message:     message.trim() || null,
-        statut:      'en_attente',
-        tarif_jour:  petsitter?.tarif ?? null,
-        nb_jours,
-        animal_id:   animalChoisi?.id ?? null,
-      });
-    } catch {
-      // mode démo : on continue même sans Supabase configuré
-    } finally {
-      setSending(false);
-      setModalOpen(false);
-      setDateDebut(null);
-      setDateFin(null);
-      setMessage('');
+      if (onMatch) await onMatch(petsitter, lignes.join('\n'));
+    } catch (e) {
+      console.warn('[demande directe] ouverture conversation', e?.message);
     }
-    if (onPropose) onPropose(petsitter);
-    if (onMatch)   await onMatch(petsitter);
     Alert.alert(
       '✨ Demande envoyée !',
-      `${petsitter?.nom} a reçu ta proposition. Un message a été ouvert dans l'onglet Messages.`
+      `${petsitter?.nom} a reçu ta demande. La conversation est ouverte dans l'onglet Messages.`
     );
   };
 
@@ -579,30 +414,17 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
     extrapolate: 'clamp',
   });
 
-  const handlePublierDemande = async () => {
-    if (!dateDebutO || !dateFinO) {
-      Alert.alert('Dates manquantes', 'Sélectionne une date de début et de fin.');
-      return;
-    }
-    setSendingO(true);
-    try {
-      await creerDemandeOuverte({
-        proprio_id:  user.id,
-        animal_id:   animalChoisiO?.id ?? null,
-        date_debut:  dateDebutO.toISOString().slice(0, 10),
-        date_fin:    dateFinO.toISOString().slice(0, 10),
-        message:     messageO.trim() || null,
-      });
-      const updated = await getMesDemandesOuvertes(user.id);
-      setMesDemandesOuvertes(updated);
-      setModalOuverteOpen(false);
-      setDateDebutO(null); setDateFinO(null); setMessageO(''); setAnimalChoisiO(null);
-      Alert.alert('📢 Demande publiée !', 'Les pawsitters compatibles peuvent maintenant la voir et l\'accepter.');
-    } catch (e) {
-      Alert.alert('Erreur', e?.message ?? 'Impossible de publier la demande.');
-    } finally {
-      setSendingO(false);
-    }
+  const handlePublierDemande = async ({ animaux, debut, fin, message }) => {
+    await creerDemandeOuverte({
+      proprio_id: user.id,
+      animal_ids: animaux.map(a => a.id),
+      date_debut: debut,
+      date_fin:   fin,
+      message:    message || null,
+    });
+    setModalOuverteOpen(false);
+    getMesDemandesOuvertes(user.id).then(setMesDemandesOuvertes).catch(() => {});
+    Alert.alert('📢 Demande publiée !', 'Les pawsitters compatibles peuvent maintenant la voir et l\'accepter.');
   };
 
   const handleAnnulerDemande = (id) => {
@@ -619,64 +441,6 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
     ]);
   };
 
-  const handleEnvoyerDemandePrivee = async () => {
-    if (!debutPrivee || !finPrivee) {
-      Alert.alert('Dates manquantes', 'Sélectionnez une date de début et de fin.');
-      return;
-    }
-    if (mesAnimaux.length > 0 && animauxPrivee.length === 0) {
-      Alert.alert('Animal manquant', 'Sélectionnez au moins un animal à confier.');
-      return;
-    }
-    setSendingPrivee(true);
-    const petsitter = selectedPetsitterMap;
-    const nb_jours  = Math.ceil((finPrivee - debutPrivee) / (1000 * 60 * 60 * 24)) + 1;
-
-    const tarifService = servicePrivee ? getTarifService(petsitter, servicePrivee) : petsitter?.tarif ?? null;
-
-    try {
-      await creerGarde({
-        proprio_id: user?.id,
-        gardien_id: petsitter?.id,
-        date_debut: debutPrivee.toISOString().split('T')[0],
-        date_fin:   finPrivee.toISOString().split('T')[0],
-        message:    messagePrivee.trim() || null,
-        statut:     'en_attente',
-        tarif_jour: tarifService,
-        nb_jours,
-        animal_id:  animauxPrivee[0]?.id ?? null,
-      });
-    } catch { /* mode démo */ }
-
-    const dateStr    = `${debutPrivee.toLocaleDateString('fr-FR')} → ${finPrivee.toLocaleDateString('fr-FR')}`;
-    const animauxStr = animauxPrivee.map(a => a.nom).join(', ') || 'Non précisé';
-    const svcLabel   = servicePrivee ? (SERVICE_MAP[servicePrivee]?.label ?? servicePrivee) : 'Non précisé';
-    const tarifStr   = tarifService != null ? ` (${tarifService} €${SERVICE_MAP[servicePrivee]?.unit ?? '/jour'})` : '';
-    const serviceStr = svcLabel + tarifStr;
-    const msgParts   = [
-      `🐾 Demande de garde privée`,
-      `📅 Dates : ${dateStr}`,
-      `🏠 Service : ${serviceStr}`,
-      `🐶 Animal(aux) : ${animauxStr}`,
-    ];
-    if (messagePrivee.trim()) msgParts.push(`💬 ${messagePrivee.trim()}`);
-    const msgText = msgParts.join('\n');
-
-    setSendingPrivee(false);
-    setShowDemandePrivee(false);
-    setDebutPrivee(null);
-    setFinPrivee(null);
-    setAnimauxPrivee([]);
-    setServicePrivee(null);
-    setMessagePrivee('');
-
-    if (onMatch) await onMatch(petsitter, msgText);
-    Alert.alert(
-      '✨ Demande envoyée !',
-      `${petsitter?.nom} a reçu ta demande. Un message a été ouvert dans l'onglet Messages.`
-    );
-  };
-
   const likeOpacity = position.x.interpolate({
     inputRange: [0, SCREEN_WIDTH * 0.2],
     outputRange: [0, 1], extrapolate: 'clamp',
@@ -685,6 +449,54 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
     inputRange: [-SCREEN_WIDTH * 0.2, 0],
     outputRange: [1, 0], extrapolate: 'clamp',
   });
+
+  const swipedPetsitter = pawsitters[index - 1] ?? null;
+
+  const renderCompat = (ps) => {
+    if (!ps || !propioOnboarding) return null;
+    const { pct, blocages, criteres } = calculerCompatibilite(propioOnboarding, ps);
+    if (pct == null) return null;
+    const colors = matchColor(pct);
+    return (
+      <View style={[styles.modalMatchBox, { marginHorizontal: 20 }]}>
+        <View style={[styles.modalMatchBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+          <Text style={[styles.modalMatchPct, { color: colors.text }]}>{pct}% compatible</Text>
+        </View>
+        {criteres.map(c => {
+          const ratio = c.max > 0 ? c.score / c.max : 0;
+          const barColor = ratio >= 0.7 ? '#16A34A' : ratio >= 0.4 ? '#D97706' : '#DC2626';
+          return (
+            <View key={c.label} style={styles.matchRow}>
+              <Text style={styles.matchRowIcon}>{c.icon}</Text>
+              <View style={styles.matchRowMid}>
+                <Text style={styles.matchRowLabel}>{c.label}</Text>
+                <View style={styles.matchBar}>
+                  <View style={[styles.matchFill, { width: `${Math.round(ratio * 100)}%`, backgroundColor: barColor }]} />
+                </View>
+              </View>
+              <Text style={[styles.matchRowPts, { color: barColor }]}>{c.score}/{c.max}</Text>
+            </View>
+          );
+        })}
+        {blocages.map((b, i) => (
+          <Text key={i} style={styles.modalMatchBlocage}>{b}</Text>
+        ))}
+      </View>
+    );
+  };
+
+  const modalDemandeOuverte = (
+    <DemandeGardeModal
+      visible={modalOuverteOpen}
+      onClose={() => setModalOuverteOpen(false)}
+      mode="ouverte"
+      titre="📢 Demande ouverte"
+      sousTitre="Tous les pawsitters compatibles la verront et pourront l'accepter."
+      mesAnimaux={mesAnimaux}
+      submitLabel="📢 Publier la demande"
+      onSubmit={handlePublierDemande}
+    />
+  );
 
   if (loadingList) {
     return (
@@ -734,21 +546,7 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
             {mesDemandesOuvertes.length} demande{mesDemandesOuvertes.length > 1 ? 's' : ''} ouverte{mesDemandesOuvertes.length > 1 ? 's' : ''} en attente
           </Text>
         )}
-        <ModalDemandeOuverte
-          visible={modalOuverteOpen}
-          mesAnimaux={mesAnimaux}
-          animalChoisi={animalChoisiO}
-          setAnimalChoisi={setAnimalChoisiO}
-          dateDebut={dateDebutO}
-          dateFin={dateFinO}
-          setDateDebut={setDateDebutO}
-          setDateFin={setDateFinO}
-          message={messageO}
-          setMessage={setMessageO}
-          sending={sendingO}
-          onPublier={handlePublierDemande}
-          onClose={() => setModalOuverteOpen(false)}
-        />
+        {modalDemandeOuverte}
       </View>
     );
   }
@@ -791,7 +589,7 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
           {mesDemandesOuvertes.map(d => (
             <View key={d.id} style={styles.ouvertePill}>
               <Text style={styles.ouvertePillText}>
-                📢 {d.animal?.nom ?? 'Garde'} · {new Date(d.date_debut).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}→{new Date(d.date_fin).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                📢 {d.animaux?.length ? d.animaux.map(a => a.nom).join(', ') : 'Garde'} · {new Date(d.date_debut + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}→{new Date(d.date_fin + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
               </Text>
               <TouchableOpacity onPress={() => handleAnnulerDemande(d.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={styles.ouvertePillClose}>✕</Text>
@@ -991,289 +789,34 @@ export default function SearchPetsitterScreen({ user, animal, onPropose, onMatch
         </TouchableOpacity>
       </View>
 
-      {/* Modal demande ouverte */}
-      <ModalDemandeOuverte
-        visible={modalOuverteOpen}
+      {modalDemandeOuverte}
+
+      {/* Proposition après un swipe à droite */}
+      <DemandeGardeModal
+        visible={modalOpen}
+        onClose={() => setModalOpen(false)}
+        mode="directe"
+        titre="Proposer une garde"
+        sousTitre={`à ${swipedPetsitter?.nom ?? ''}`}
         mesAnimaux={mesAnimaux}
-        animalChoisi={animalChoisiO}
-        setAnimalChoisi={setAnimalChoisiO}
-        dateDebut={dateDebutO}
-        dateFin={dateFinO}
-        setDateDebut={setDateDebutO}
-        setDateFin={setDateFinO}
-        message={messageO}
-        setMessage={setMessageO}
-        sending={sendingO}
-        onPublier={handlePublierDemande}
-        onClose={() => setModalOuverteOpen(false)}
+        petsitter={swipedPetsitter}
+        extraHeader={renderCompat(swipedPetsitter)}
+        submitLabel="📤 Envoyer la demande"
+        onSubmit={data => envoyerDemandeDirecte(swipedPetsitter, data)}
       />
 
-      {/* Modal proposition de date */}
-      <Modal visible={modalOpen} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalTitre}>Proposer une garde</Text>
-            <Text style={styles.modalSub}>
-              à {pawsitters[index - 1]?.nom} {pawsitters[index - 1]?.initiales && `(${pawsitters[index - 1].initiales})`}
-            </Text>
-
-            {/* Score de compatibilité dans le modal */}
-            {(() => {
-              const ps = pawsitters[index - 1];
-              if (!ps || !propioOnboarding) return null;
-              const { pct, blocages, criteres } = calculerCompatibilite(propioOnboarding, ps);
-              if (pct == null) return null;
-              const colors = matchColor(pct);
-              return (
-                <View style={styles.modalMatchBox}>
-                  <View style={[styles.modalMatchBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-                    <Text style={[styles.modalMatchPct, { color: colors.text }]}>{pct}% compatible</Text>
-                  </View>
-                  {criteres.map(c => {
-                    const ratio = c.max > 0 ? c.score / c.max : 0;
-                    const barColor = ratio >= 0.7 ? '#16A34A' : ratio >= 0.4 ? '#D97706' : '#DC2626';
-                    return (
-                      <View key={c.label} style={styles.matchRow}>
-                        <Text style={styles.matchRowIcon}>{c.icon}</Text>
-                        <View style={styles.matchRowMid}>
-                          <Text style={styles.matchRowLabel}>{c.label}</Text>
-                          <View style={styles.matchBar}>
-                            <View style={[styles.matchFill, { width: `${Math.round(ratio * 100)}%`, backgroundColor: barColor }]} />
-                          </View>
-                        </View>
-                        <Text style={[styles.matchRowPts, { color: barColor }]}>{c.score}/{c.max}</Text>
-                      </View>
-                    );
-                  })}
-                  {blocages.length > 0 && blocages.map((b, i) => (
-                    <Text key={i} style={styles.modalMatchBlocage}>{b}</Text>
-                  ))}
-                </View>
-              );
-            })()}
-
-            {mesAnimaux.length > 0 && (
-              <View style={styles.animalPickerBox}>
-                <Text style={styles.animalPickerLabel}>QUEL ANIMAL À CONFIER ?</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    {mesAnimaux.map(a => {
-                      const sel = animalChoisi?.id === a.id;
-                      const emoji = ANIMAL_TYPE_EMOJI[a.type?.toLowerCase()] ?? '🐾';
-                      return (
-                        <TouchableOpacity
-                          key={a.id}
-                          style={[styles.animalChip, sel && styles.animalChipSel]}
-                          onPress={() => setAnimalChoisi(sel ? null : a)}
-                          activeOpacity={0.75}
-                        >
-                          <Text style={[styles.animalChipText, sel && styles.animalChipTextSel]}>
-                            {emoji} {a.nom}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </ScrollView>
-              </View>
-            )}
-
-            {pawsitters[index - 1]?.dispoProches?.length > 0 && (
-              <View style={styles.dispoInfoBox}>
-                <Text style={styles.dispoInfoLabel}>📅 Créneaux renseignés par le pawsitter</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                  <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 2 }}>
-                    {pawsitters[index - 1].dispoProches.map(d => (
-                      <View key={d} style={styles.dispoChip}>
-                        <Text style={styles.dispoChipText}>{formatDispoDate(d)}</Text>
-                      </View>
-                    ))}
-                  </View>
-                </ScrollView>
-              </View>
-            )}
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <DatePicker label="DATE DE DÉBUT" date={dateDebut} onSelect={setDateDebut} />
-              <DatePicker label="DATE DE FIN"   date={dateFin}   onSelect={d => {
-                if (dateDebut && d < dateDebut) {
-                  Alert.alert('Date invalide', 'La fin doit être après le début.');
-                  return;
-                }
-                setDateFin(d);
-              }} />
-
-              {/* Message optionnel au pawsitter */}
-              <Text style={styles.msgLabel}>Message au pawsitter (optionnel)</Text>
-              <TextInput
-                style={styles.msgInput}
-                placeholder="Présentez votre animal, ses habitudes…"
-                placeholderTextColor={COLORS.border}
-                value={message}
-                onChangeText={setMessage}
-                multiline
-                maxLength={300}
-              />
-
-              {dateDebut && dateFin && (
-                <View style={styles.resumeBox}>
-                  <Text style={styles.resumeText}>
-                    {Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24) + 1)} jour{Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24) + 1) > 1 ? 's' : ''} · {Math.ceil((dateFin - dateDebut) / (1000 * 60 * 60 * 24) + 1) * (pawsitters[index - 1]?.tarif ?? 0)} € estimés
-                  </Text>
-                </View>
-              )}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.envoyerBtn, (!dateDebut || !dateFin || sending) && { opacity: 0.5 }]}
-              onPress={handleEnvoyer}
-              disabled={!dateDebut || !dateFin || sending}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.envoyerText}>
-                {sending ? 'Envoi...' : '📤 Envoyer la demande'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => { setModalOpen(false); setDateDebut(null); setDateFin(null); setMessage(''); }} style={styles.annulerBtn}>
-              <Text style={styles.annulerText}>Annuler</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Modal demande privée (depuis la carte) */}
-      <Modal visible={showDemandePrivee} animationType="slide" transparent onRequestClose={() => setShowDemandePrivee(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalBox, { maxHeight: SCREEN_HEIGHT * 0.85 }]}>
-            <Text style={styles.modalTitre}>Demande de garde privée</Text>
-            <Text style={styles.modalSub}>
-              à {selectedPetsitterMap?.nom ?? ''}
-              {selectedPetsitterMap?.tarif ? ` · ${selectedPetsitterMap.tarif} €/jour` : ''}
-            </Text>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Sélection du service */}
-              <Text style={styles.msgLabel}>TYPE DE SERVICE</Text>
-              {(() => {
-                const modesDispos = (selectedPetsitterMap?.modes ?? []).filter(m => SERVICE_MAP[m]);
-                // Déduplique nuitee/pension (même service, deux IDs possibles selon ancienneté du profil)
-                const seenLabels = new Set();
-                const liste = (modesDispos.length > 0 ? modesDispos : Object.keys(SERVICE_MAP))
-                  .filter(m => { const l = SERVICE_MAP[m].label; return seenLabels.has(l) ? false : (seenLabels.add(l), true); });
-                return (
-                  <View style={styles.serviceRow}>
-                    {liste.map(svcId => {
-                      const svc    = SERVICE_MAP[svcId];
-                      const tarif  = getTarifService(selectedPetsitterMap, svcId);
-                      const sel    = servicePrivee === svcId;
-                      return (
-                        <TouchableOpacity
-                          key={svcId}
-                          style={[styles.serviceChip, sel && styles.serviceChipSel]}
-                          onPress={() => setServicePrivee(prev => prev === svcId ? null : svcId)}
-                          activeOpacity={0.75}
-                        >
-                          <Text style={[styles.serviceChipText, sel && styles.serviceChipTextSel]}>
-                            {svc.icon} {svc.label}
-                          </Text>
-                          {tarif != null && (
-                            <Text style={[styles.serviceChipTarif, sel && styles.serviceChipTarifSel]}>
-                              {tarif} €{svc.unit}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                );
-              })()}
-
-              {/* Sélection des animaux */}
-              {mesAnimaux.length > 0 && (
-                <View style={[styles.animalPickerBox, { marginTop: 12 }]}>
-                  <Text style={styles.animalPickerLabel}>ANIMAL(AUX) À CONFIER</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {mesAnimaux.map(a => {
-                      const sel = animauxPrivee.some(x => x.id === a.id);
-                      const emoji = ANIMAL_TYPE_EMOJI[a.type?.toLowerCase()] ?? '🐾';
-                      return (
-                        <TouchableOpacity
-                          key={a.id}
-                          style={[styles.animalChip, sel && styles.animalChipSel]}
-                          onPress={() => setAnimauxPrivee(prev =>
-                            sel ? prev.filter(x => x.id !== a.id) : [...prev, a]
-                          )}
-                          activeOpacity={0.75}
-                        >
-                          <Text style={[styles.animalChipText, sel && styles.animalChipTextSel]}>
-                            {emoji} {a.nom}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-
-              <DatePicker label="DATE DE DÉBUT" date={debutPrivee} onSelect={setDebutPrivee} />
-              <DatePicker label="DATE DE FIN" date={finPrivee} onSelect={d => {
-                if (debutPrivee && d < debutPrivee) {
-                  Alert.alert('Date invalide', 'La fin doit être après le début.');
-                  return;
-                }
-                setFinPrivee(d);
-              }} />
-
-              {debutPrivee && finPrivee && (
-                <View style={styles.resumeBox}>
-                  {(() => {
-                    const nb     = Math.ceil((finPrivee - debutPrivee) / (1000 * 60 * 60 * 24)) + 1;
-                    const tarif  = servicePrivee ? getTarifService(selectedPetsitterMap, servicePrivee) : selectedPetsitterMap?.tarif;
-                    const unit   = servicePrivee ? (SERVICE_MAP[servicePrivee]?.unit ?? '/jour') : '/jour';
-                    const total  = tarif != null ? nb * tarif : null;
-                    return (
-                      <Text style={styles.resumeText}>
-                        {nb} jour{nb > 1 ? 's' : ''}
-                        {tarif != null ? ` · ${tarif} €${unit} · ~${total} € estimés` : ''}
-                      </Text>
-                    );
-                  })()}
-                </View>
-              )}
-
-              <Text style={styles.msgLabel}>MESSAGE (optionnel)</Text>
-              <TextInput
-                style={styles.msgInput}
-                placeholder="Présentez votre animal, ses habitudes, vos attentes…"
-                placeholderTextColor={COLORS.border}
-                value={messagePrivee}
-                onChangeText={setMessagePrivee}
-                multiline
-                maxLength={300}
-              />
-            </ScrollView>
-
-            <TouchableOpacity
-              style={[styles.envoyerBtn, (!debutPrivee || !finPrivee || sendingPrivee) && { opacity: 0.5 }]}
-              onPress={handleEnvoyerDemandePrivee}
-              disabled={!debutPrivee || !finPrivee || sendingPrivee}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.envoyerText}>
-                {sendingPrivee ? 'Envoi…' : '📤 Envoyer la demande'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => { setShowDemandePrivee(false); setDebutPrivee(null); setFinPrivee(null); setAnimauxPrivee([]); setServicePrivee(null); setMessagePrivee(''); }}
-              style={styles.annulerBtn}
-            >
-              <Text style={styles.annulerText}>Annuler</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* Demande directe depuis la carte */}
+      <DemandeGardeModal
+        visible={showDemandePrivee}
+        onClose={() => setShowDemandePrivee(false)}
+        mode="directe"
+        titre="Demande de garde"
+        sousTitre={`à ${selectedPetsitterMap?.nom ?? ''}`}
+        mesAnimaux={mesAnimaux}
+        petsitter={selectedPetsitterMap}
+        submitLabel="📤 Envoyer la demande"
+        onSubmit={data => envoyerDemandeDirecte(selectedPetsitterMap, data)}
+      />
     </View>
   );
 }
