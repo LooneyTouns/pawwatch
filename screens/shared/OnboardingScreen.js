@@ -702,10 +702,10 @@ export default function OnboardingScreen({ user, onComplete, onSkip }) {
           }
         }));
         // Mettre à jour le blob onboarding en DB avec les URLs permanentes
-        await supabase.from('users')
+        const { error: blobErr } = await supabase.from('users')
           .update({ onboarding: updatedAnswers })
-          .eq('id', userId)
-          .catch(() => {});
+          .eq('id', userId);
+        if (blobErr) console.warn('Mise à jour onboarding:', blobErr.message);
         // Propager les URLs dans finalAnswers pour la suite (saveAnimaux, onComplete)
         Object.assign(finalAnswers, updatedAnswers);
       }

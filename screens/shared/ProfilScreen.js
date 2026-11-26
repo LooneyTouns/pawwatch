@@ -597,7 +597,8 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
           // Persister les URLs dans users.onboarding
           const updatedBlob = { ...(onboardingBlob || {}) };
           animauxFinal.forEach((a, idx) => { if (a.photo) updatedBlob[`photo_nom_animal_${idx}`] = a.photo; });
-          await supabase.from('users').update({ onboarding: updatedBlob }).eq('id', user.id).catch(() => {});
+          const { error: blobErr } = await supabase.from('users').update({ onboarding: updatedBlob }).eq('id', user.id);
+          if (blobErr) console.warn('Mise à jour onboarding:', blobErr.message);
           setOnboardingBlob(updatedBlob);
         }
         await saveAnimaux(user.id, animauxFinal);
