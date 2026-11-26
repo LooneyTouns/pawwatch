@@ -18,7 +18,8 @@ const MSG_ICON    = require('./assets/msg.png');
 const APP_LOGO    = require('./assets/logo.png');
 const PASTEL_BG   = require('./assets/pastel.png');
 import { COLORS, FONTS, RADIUS } from './lib/theme';
-import { supabase, getUser, signOut, getGardesEnCours, getConversations, sendMessage, createOrGetConversation, markMessagesRead } from './lib/supabase';
+import { supabase, getUser, getUserProfile, signOut, getGardesEnCours, getConversations, sendMessage, createOrGetConversation, markMessagesRead } from './lib/supabase';
+import { estProfilPetsitterComplet } from './lib/onboardingMap';
 import { useNotifications, scheduleJournalReminder } from './hooks/useNotifications';
 
 // Écrans
@@ -84,7 +85,7 @@ export default function App() {
   const [loading,           setLoading]           = useState(true);
   const [journalAnimal,          setJournalAnimal]          = useState(null);
   const [journauxCompletes,      setJournauxCompletes]      = useState([]);
-  const [profilPetsitterComplet, setProfilPetsitterComplet] = useState(false);
+  const [profilPetsitterComplet, setProfilPetsitterComplet] = useState(null);
   const [profilInitialTab, setProfilInitialTab] = useState('profil');
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingAnswers, setOnboardingAnswers] = useState(null);
@@ -134,6 +135,17 @@ export default function App() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+  }, [user?.id, role]);
+
+  // null = pas encore vérifié : le bandeau « profil incomplet » ne s'affiche que sur un false avéré
+  useEffect(() => {
+    setProfilPetsitterComplet(null);
+    if (!user?.id || role !== 'petsitter') return;
+    let annule = false;
+    getUserProfile(user.id)
+      .then(p => { if (!annule) setProfilPetsitterComplet(estProfilPetsitterComplet(p)); })
+      .catch(() => {});
+    return () => { annule = true; };
   }, [user?.id, role]);
 
   useEffect(() => {
@@ -478,7 +490,7 @@ export default function App() {
         </ImageBackground>
 
         {/* Bandeau profil incomplet */}
-        {isPetsitterRole && !profilPetsitterComplet && (
+        {isPetsitterRole && profilPetsitterComplet === false && (
           <TouchableOpacity
             style={styles.profilGate}
             onPress={() => { setProfilInitialTab('modifier'); setActiveTab('profil'); }}
