@@ -1,15 +1,62 @@
 // components/UI.js — Composants réutilisables PawWatch
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View, Text, TouchableOpacity, Image,
-  StyleSheet, Animated, TextInput,
+  StyleSheet, Animated, TextInput, LayoutAnimation,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, RADIUS, SHADOW } from '../lib/theme';
-import { champsManquants } from '../lib/animaux';
+import { champsManquants, estVide, SECTIONS_FICHE } from '../lib/animaux';
 
 const DOG_ICON = require('../assets/dog-icon.png');
 const CAT_ICON = require('../assets/cat-icon.png');
+
+// ─── SectionDepliable ────────────────────────────────────────────
+// statut : { texte, ton: 'ok' | 'warn' | 'neutre' } affiché à droite du titre.
+// Contrôlée si `ouvert` est fourni (avec onToggle), sinon gère son propre état.
+export const SectionDepliable = ({ icon, titre, statut, initialOuvert = false, ouvert, onToggle, children, style }) => {
+  const [ouvertLocal, setOuvertLocal] = useState(initialOuvert);
+  const estOuvert = ouvert ?? ouvertLocal;
+  const toggle = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (onToggle) onToggle();
+    else setOuvertLocal(o => !o);
+  };
+  const ton = statut?.ton ?? 'neutre';
+  return (
+    <View style={[dep.wrap, estOuvert && dep.wrapOuvert, style]}>
+      <TouchableOpacity onPress={toggle} style={dep.header} activeOpacity={0.75}>
+        {icon ? <Text style={dep.icon}>{icon}</Text> : null}
+        <Text style={dep.titre} numberOfLines={1}>{titre}</Text>
+        {statut ? (
+          <View style={[dep.badge, dep[`badge_${ton}`]]}>
+            <Text style={[dep.badgeText, dep[`badgeText_${ton}`]]}>{statut.texte}</Text>
+          </View>
+        ) : null}
+        <Text style={dep.chevron}>{estOuvert ? '▴' : '▾'}</Text>
+      </TouchableOpacity>
+      {estOuvert && <View style={dep.body}>{children}</View>}
+    </View>
+  );
+};
+
+const dep = StyleSheet.create({
+  wrap:       { backgroundColor: COLORS.white, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.border, marginBottom: 10, overflow: 'hidden' },
+  wrapOuvert: { borderColor: COLORS.bark },
+  header:     { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 13 },
+  icon:       { fontSize: 18 },
+  titre:      { flex: 1, fontSize: 15, ...FONTS.heavy, color: COLORS.ink },
+  badge:      { borderRadius: RADIUS.full, paddingHorizontal: 9, paddingVertical: 3 },
+  badge_ok:     { backgroundColor: COLORS.okBg },
+  badge_warn:   { backgroundColor: COLORS.warnBg },
+  badge_neutre: { backgroundColor: COLORS.sand },
+  badgeText:        { fontSize: 11, ...FONTS.bold },
+  badgeText_ok:     { color: COLORS.ok },
+  badgeText_warn:   { color: COLORS.clay },
+  badgeText_neutre: { color: COLORS.muted },
+  chevron:    { fontSize: 14, color: COLORS.muted, marginLeft: 2 },
+  body:       { paddingHorizontal: 14, paddingBottom: 4, paddingTop: 12, borderTopWidth: 1, borderTopColor: COLORS.border },
+});
 
 // ─── Badge ───────────────────────────────────────────────────────
 export const Badge = ({ label, color = 'default' }) => {
@@ -197,16 +244,24 @@ const ChipRow = ({ label, options, value, onSelect }) => (
   </View>
 );
 
-// ── Séparateur de section dans la carte animal ─────────────────
-const AnimalSection = ({ icon, title }) => (
-  <View style={aStyles.sectionSep}>
-    <Text style={aStyles.sectionIcon}>{icon}</Text>
-    <Text style={aStyles.sectionTitle}>{title}</Text>
-  </View>
-);
+const CHAMPS_CONTACT = SECTIONS_FICHE.contacts;
+const aDesContacts = a => CHAMPS_CONTACT.some(c => a[c]?.trim?.());
 
-const AnimalCard = ({ animal, index, onChange, onRemove }) => {
+// Nombre de champs vides d'une catégorie de la fiche, pour le badge de la section repliable
+const statutSection = (animal, cle) => {
+  const n = SECTIONS_FICHE[cle].filter(c => estVide(animal[c])).length;
+  return n ? { texte: `${n} à remplir`, ton: 'warn' } : { texte: 'Complet', ton: 'ok' };
+};
+
+const AnimalCard = ({ animal, index, onChange, onRemove, contactsSource }) => {
   const upd = (field, val) => onChange({ ...animal, [field]: val });
+  const nbManquants = champsManquants(animal).length;
+  const memesContacts = contactsSource
+    && CHAMPS_CONTACT.every(c => (animal[c] ?? '').trim() === (contactsSource[c] ?? '').trim());
+  const reprendreContacts = () => onChange({
+    ...animal,
+    ...Object.fromEntries(CHAMPS_CONTACT.map(c => [c, contactsSource[c] ?? ''])),
+  });
   const emoji = animal.type === 'rongeur' ? '🐹' : animal.type === 'equin' ? '🐴' : null;
 
   const pickPhoto = async () => {
@@ -241,6 +296,9 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
           }
           <Text style={aStyles.cardTitle}>{animal.nom || `Animal ${index + 1}`}</Text>
         </View>
+        <Text style={[aStyles.cardStatut, { color: nbManquants ? COLORS.clay : COLORS.ok }]}>
+          {nbManquants ? `${nbManquants} champ${nbManquants > 1 ? 's' : ''} à remplir` : '✓ Fiche complète'}
+        </Text>
         <TouchableOpacity onPress={onRemove} style={aStyles.removeBtn}>
           <Text style={aStyles.removeText}>✕</Text>
         </TouchableOpacity>
@@ -267,8 +325,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
         </View>
       </View>
 
-      {/* ════ 1. IDENTITÉ ════ */}
-      <AnimalSection icon="👤" title="Identité" />
+      <SectionDepliable icon="👤" titre="Identité" statut={statutSection(animal, 'identite')} initialOuvert={!animal.nom}>
 
       <View style={aStyles.fieldBlock}>
         <Text style={aStyles.fieldLbl}>Nom *</Text>
@@ -311,8 +368,9 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
         </View>
       </View>
 
-      {/* ════ 2. SANTÉ ════ */}
-      <AnimalSection icon="❤️" title="Santé" />
+      </SectionDepliable>
+
+      <SectionDepliable icon="❤️" titre="Santé" statut={statutSection(animal, 'sante')}>
 
       <ChipRow label="Stérilisé / Castré *"
         options={[{ label: 'Oui', value: true }, { label: 'Non', value: false }]}
@@ -348,8 +406,9 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
           onChangeText={v => upd('medicaments', v)} multiline numberOfLines={2} textAlignVertical="top" />
       </View>
 
-      {/* ════ 3. ALIMENTATION ════ */}
-      <AnimalSection icon="🍽️" title="Alimentation" />
+      </SectionDepliable>
+
+      <SectionDepliable icon="🍽️" titre="Alimentation" statut={statutSection(animal, 'alimentation')}>
 
       <ChipRow label="Type d'alimentation *"
         options={[
@@ -362,10 +421,10 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
       />
       <ChipRow label="Fréquence des repas *"
         options={[
-          { label: '1×/jour',  value: '1x' },
-          { label: '2×/jour',  value: '2x' },
-          { label: '3×/jour',  value: '3x' },
-          { label: 'Libre',    value: 'libre' },
+          { label: '1× par jour',         value: '1x' },
+          { label: 'Matin et soir',       value: '2x' },
+          { label: 'Matin, midi et soir', value: '3x' },
+          { label: 'Libre',               value: 'libre' },
         ]}
         value={animal.freqRepas} onSelect={v => upd('freqRepas', v)}
       />
@@ -377,8 +436,9 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
           onChangeText={v => upd('quantiteRepas', v)} />
       </View>
 
-      {/* ════ 4. CARACTÈRE ════ */}
-      <AnimalSection icon="💭" title="Caractère & comportement" />
+      </SectionDepliable>
+
+      <SectionDepliable icon="💭" titre="Caractère & comportement" statut={statutSection(animal, 'caractere')}>
 
       <View style={aStyles.fieldBlock}>
         <Text style={aStyles.fieldLbl}>Description du caractère *</Text>
@@ -421,8 +481,21 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
         value={animal.avecEtrangers} onSelect={v => upd('avecEtrangers', v)}
       />
 
-      {/* ════ 5. CONTACTS ════ */}
-      <AnimalSection icon="📞" title="Contacts" />
+      </SectionDepliable>
+
+      <SectionDepliable icon="📞" titre="Contacts" statut={statutSection(animal, 'contacts')}>
+
+      {contactsSource && (memesContacts ? (
+        <Text style={aStyles.contactsCopies}>
+          ✓ Mêmes contacts que {contactsSource.nom?.trim() || 'ton autre animal'}
+        </Text>
+      ) : (
+        <TouchableOpacity onPress={reprendreContacts} style={aStyles.contactsBtn} activeOpacity={0.8}>
+          <Text style={aStyles.contactsBtnText}>
+            📋 Reprendre les contacts de {contactsSource.nom?.trim() || 'mon autre animal'}
+          </Text>
+        </TouchableOpacity>
+      ))}
 
       <View style={aStyles.fieldBlock}>
         <Text style={aStyles.fieldLbl}>Vétérinaire — Nom *</Text>
@@ -448,6 +521,7 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
           placeholderTextColor={COLORS.border} value={animal.urgenceTel ?? ''}
           onChangeText={v => upd('urgenceTel', v)} keyboardType="phone-pad" />
       </View>
+      </SectionDepliable>
     </View>
   );
 };
@@ -474,6 +548,7 @@ export const AnimalEditor = ({ animaux, onChange }) => {
           key={a.id}
           animal={a}
           index={i}
+          contactsSource={animaux.find(x => x.id !== a.id && aDesContacts(x))}
           onChange={updated => update(a.id, updated)}
           onRemove={() => remove(a.id)}
         />
@@ -530,15 +605,7 @@ const aStyles = StyleSheet.create({
   },
   row2: { flexDirection: 'row', gap: 10, marginBottom: 12 },
 
-  sectionSep: {
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: COLORS.warm, borderRadius: RADIUS.sm,
-    paddingHorizontal: 12, paddingVertical: 8,
-    marginBottom: 12, marginTop: 4,
-    borderLeftWidth: 3, borderLeftColor: COLORS.bark,
-  },
-  sectionIcon:  { fontSize: 16 },
-  sectionTitle: { fontSize: 12, ...FONTS.heavy, color: COLORS.bark, textTransform: 'uppercase', letterSpacing: 0.5 },
+  cardStatut: { flex: 1, fontSize: 12, ...FONTS.bold, textAlign: 'right', marginHorizontal: 8 },
 
   photoRow:         { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 14, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   avatarCircle:     { width: 72, height: 72, borderRadius: 36, overflow: 'visible', position: 'relative' },
@@ -554,6 +621,10 @@ const aStyles = StyleSheet.create({
     backgroundColor: COLORS.warm, marginTop: 4,
   },
   addBtnText: { fontSize: 14, ...FONTS.bold, color: COLORS.bark },
+
+  contactsBtn:     { borderWidth: 1.5, borderColor: COLORS.moss, borderRadius: RADIUS.md, paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center', backgroundColor: COLORS.infoBg, marginBottom: 12 },
+  contactsBtnText: { fontSize: 13, ...FONTS.bold, color: COLORS.moss },
+  contactsCopies:  { fontSize: 12, ...FONTS.bold, color: COLORS.ok, marginBottom: 10 },
 });
 
 // ─── PriceInput ──────────────────────────────────────────────────

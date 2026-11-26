@@ -12,7 +12,7 @@ import {
   getGardeCount, getAnimaux, saveAnimaux,
   getProfilPhotos, uploadProfilPhoto, addProfilPhoto, deleteProfilPhoto,
 } from '../../lib/supabase';
-import { Card, Avatar, SectionLabel, PhotoUpload, AnimalEditor, PriceInput, validateAnimaux } from '../../components/UI';
+import { Card, Avatar, SectionLabel, PhotoUpload, AnimalEditor, PriceInput, validateAnimaux, SectionDepliable } from '../../components/UI';
 import AddressAutocomplete from '../../components/AddressAutocomplete';
 import CalendrierDispo from '../../components/CalendrierDispo';
 import { getDisponibilites, saveDisponibilites } from '../../lib/supabase';
@@ -499,6 +499,38 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
     return true;
   };
 
+  // ── Sections repliables de l'onglet « Modifier » ──
+  const [sectionsOuvertes, setSectionsOuvertes] = useState({});
+  const section = id => ({
+    ouvert:   !!sectionsOuvertes[id],
+    onToggle: () => setSectionsOuvertes(s => ({ ...s, [id]: !s[id] })),
+  });
+  const ok   = texte => ({ texte, ton: 'ok' });
+  const warn = texte => ({ texte, ton: 'warn' });
+
+  // Tarifs manquants pour les services cochés
+  const tarifsManquants = [
+    [modePromenade,      prixPromenade],
+    [modeChezProprio,    prixVisite],
+    [modeGardeJour,      prixGardeJour],
+    [modeGardeJourPetsi, prixGardeJourPetsi],
+    [modePension,        prixPension],
+  ].filter(([coche, prix]) => coche && !String(prix || '').trim()).length;
+
+  const statutsPetsitter = {
+    specialites: isDogsitter || isCatsitter || isAllsitter ? ok('Complet') : warn('À choisir'),
+    modes:       modePromenade || modeChezProprio || modeGardeJour || modeGardeJourPetsi || modePension
+                   ? ok('Complet') : warn('À choisir'),
+    tarifs:      tarifsManquants ? warn(`${tarifsManquants} à remplir`) : ok('Complet'),
+    experience:  String(experience || '').trim() ? ok('Complet') : warn('À remplir'),
+    logement:    logement && (!aJardin || photoJardin) ? ok('Complet') : warn(aJardin && !photoJardin ? 'Photo jardin' : 'À remplir'),
+  };
+
+  const ouvrirSectionsIncompletes = () => setSectionsOuvertes(s => ({
+    ...s,
+    ...Object.fromEntries(Object.entries(statutsPetsitter).filter(([, st]) => st.ton === 'warn').map(([id]) => [id, true])),
+  }));
+
   const handleSauvegarder = async () => {
     if (isPetsitter && aJardin && !photoJardin) {
       Alert.alert('Photo manquante', 'Une photo du jardin est obligatoire si vous avez un jardin.');
@@ -596,7 +628,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
         setMesAnimaux(saved);
       }
       const animalErrors = isProprio ? validateAnimaux(mesAnimaux) : [];
-      if (isPetsitter && isProfilComplet() && onProfilComplet && !profilComplet) {
+      if (isPetsitter && isProfilComplet() && onProfilComplet && profilComplet === false) {
         onProfilComplet();
         Alert.alert('🎉 Profil validé !', 'Ton profil pawsitter est maintenant visible. Tu peux recevoir des demandes de garde.');
       } else if (isProprio && mesAnimaux.length === 0) {
@@ -805,7 +837,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                   </View>
                   <TouchableOpacity
                     style={ps.statusCardBtn}
-                    onPress={() => {/* scroll vers première section manquante */}}
+                    onPress={ouvrirSectionsIncompletes}
                     activeOpacity={0.8}
                   >
                     <Text style={ps.statusCardBtnText}>Compléter →</Text>
@@ -853,8 +885,11 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
             </Card>
 
             {/* ─────── COORDONNÉES (tous les rôles) ─────── */}
-            <SectionLabel label="Mes coordonnées" />
-            <Card>
+            <SectionDepliable
+              icon="📇" titre="Mes coordonnées"
+              statut={dateNaissance.length === 10 ? ok('Complet') : warn('À remplir')}
+              {...section('coordonnees')}
+            >
               <Text style={ps.cardHint}>Partagées avec ton interlocuteur lors d'une mise en relation</Text>
 
               <Text style={ps.fieldLabel}>Date de naissance <Text style={{ color: COLORS.clay }}>*</Text></Text>
@@ -907,7 +942,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                 value={ville}
                 onChangeText={setVille}
               />
-            </Card>
+            </SectionDepliable>
 
             {/* ─────── SECTION PROPRIÉTAIRE ─────── */}
             {isProprio && (
@@ -926,9 +961,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
             {isPetsitter && (
               <>
 
-                {/* Spécialités */}
-                <SectionLabel label="Mes spécialités" />
-                <Card>
+                <SectionDepliable icon="🐾" titre="Mes spécialités" statut={statutsPetsitter.specialites} {...section('specialites')}>
                   <Text style={ps.cardHint}>Sélectionne les types d'animaux que tu gardes</Text>
                   <CheckOption label="Dogsitter" image={DOG_ICON} sub="Je garde des chiens"
                     checked={isDogsitter}
@@ -943,11 +976,9 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                       setIsAllsitter(next);
                       if (next) { setIsDogsitter(false); setIsCatsitter(false); }
                     }} />
-                </Card>
+                </SectionDepliable>
 
-                {/* Modes de garde */}
-                <SectionLabel label="Modes de garde acceptés" />
-                <Card>
+                <SectionDepliable icon="🏠" titre="Modes de garde acceptés" statut={statutsPetsitter.modes} {...section('modes')}>
                   <CheckOption label="🚶 Promenade" sub="Je promène les animaux"
                     checked={modePromenade} onToggle={() => setModePromenade(!modePromenade)} />
                   <CheckOption label="🏠 Garde au domicile du propriétaire" sub="Je me déplace chez le proprio"
@@ -958,22 +989,18 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                     checked={modeGardeJour} onToggle={() => setModeGardeJour(!modeGardeJour)} />
                   <CheckOption label="🏨 Pension" sub="Hébergement nuit et jour chez moi"
                     checked={modePension} onToggle={() => setModePension(!modePension)} />
-                </Card>
+                </SectionDepliable>
 
-                {/* Tarifs */}
-                <SectionLabel label="Mes tarifs" />
-                <Card>
+                <SectionDepliable icon="💶" titre="Mes tarifs" statut={statutsPetsitter.tarifs} {...section('tarifs')}>
                   <Text style={ps.cardHint}>Fourchette colorée : 🟢 économique · 🟡 dans la moyenne · 🔴 premium</Text>
                   <PriceInput label="Garde de jour (chez moi)"            icon="☀️" type="gardeJour" value={prixGardeJourPetsi} onChange={setPrixGardeJourPetsi} />
                   <PriceInput label="Garde au domicile du propriétaire"  icon="🏡" type="gardeJour" value={prixGardeJour}      onChange={setPrixGardeJour}      />
                   <PriceInput label="Nuitée / Pension"                   icon="🌙" type="pension"   value={prixPension}        onChange={setPrixPension}        />
                   <PriceInput label="Promenade"                          icon="🐕" type="promenade" value={prixPromenade}      onChange={setPrixPromenade}      />
                   <PriceInput label="Visite à domicile"                  icon="🐱" type="visite"    value={prixVisite}         onChange={setPrixVisite}         />
-                </Card>
+                </SectionDepliable>
 
-                {/* Expérience */}
-                <SectionLabel label="Mon expérience" />
-                <Card>
+                <SectionDepliable icon="⭐" titre="Mon expérience" statut={statutsPetsitter.experience} {...section('experience')}>
                   <Text style={ps.cardHint}>Décris ton expérience avec les animaux</Text>
                   <TextInput
                     style={ps.textarea}
@@ -983,11 +1010,13 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                     placeholderTextColor={COLORS.border}
                     multiline numberOfLines={4} textAlignVertical="top"
                   />
-                </Card>
+                </SectionDepliable>
 
-                {/* Animaux perso */}
-                <SectionLabel label="Mes animaux (à la maison)" />
-                <Card>
+                <SectionDepliable
+                  icon="🐶" titre="Mes animaux (à la maison)"
+                  statut={{ texte: aDesAnimaux ? `${animauxPerso.length} animal${animauxPerso.length > 1 ? 'aux' : ''}` : 'Aucun', ton: 'neutre' }}
+                  {...section('animauxPerso')}
+                >
                   <View style={ps.switchRow}>
                     <View style={ps.switchLeft}>
                       <Text style={ps.switchTitle}>J'ai des animaux chez moi</Text>
@@ -1002,11 +1031,9 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                       <AnimalEditor animaux={animauxPerso} onChange={setAnimauxPerso} />
                     </View>
                   )}
-                </Card>
+                </SectionDepliable>
 
-                {/* Logement */}
-                <SectionLabel label="Mon logement" />
-                <Card>
+                <SectionDepliable icon="🏡" titre="Mon logement" statut={statutsPetsitter.logement} {...section('logement')}>
                   <Text style={ps.fieldLabel}>Type de logement</Text>
                   <View style={ps.logementRow}>
                     {[
@@ -1042,7 +1069,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
                       </View>
                     </>
                   )}
-                </Card>
+                </SectionDepliable>
               </>
             )}
 
