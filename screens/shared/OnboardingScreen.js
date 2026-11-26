@@ -367,7 +367,7 @@ const PROPRIO_PER_ANIMAL = [
 const PROPRIO_GLOBAL = [
   {
     id: 'type_garde',
-    question: 'Quel type de garde recherches-tu ?',
+    question: 'Quel type de service recherches-tu ?',
     subtitle: 'Plusieurs réponses possibles',
     type: 'multi',
     groups: { jour: '☀️ Services de jour', nuit: '🌙 Pension' },
