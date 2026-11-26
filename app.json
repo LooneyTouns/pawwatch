@@ -6,11 +6,6 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/logo.png",
-    "splash": {
-      "image": "./assets/logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#A0714F"
-    },
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -23,6 +18,8 @@
     },
     "android": {
       "package": "com.pawwatch.app",
+      "userInterfaceStyle": "light",
+      "backgroundColor": "#FAF8F4",
       "adaptiveIcon": {
         "foregroundImage": "./assets/logo.png",
         "backgroundColor": "#0EA5E9"
@@ -42,6 +39,25 @@
     },
     "updates": {
       "url": "https://u.expo.dev/e16fa974-d754-4523-a2ce-b0f281ef62a0"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/logo.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#FAF8F4"
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.pawwatch.app",
+          "enableGooglePay": false
+        }
+      ],
+      "expo-status-bar"
+    ]
   }
 }
