@@ -20,6 +20,8 @@ import {
   supabase,
 } from '../../lib/supabase';
 import { calculerCompatibilite, matchColor } from '../../lib/matching';
+import { SERVICE_MAP, proposeService } from '../../lib/services';
+import AnimalFiche from '../../components/AnimalFiche';
 
 const MIN_COMMENT = 10;
 
@@ -312,6 +314,17 @@ export default function DemandesScreen({ user }) {
                   </View>
                 </View>
 
+                {d.animaux?.map(a => <AnimalFiche key={a.id} animal={a} />)}
+
+                {SERVICE_MAP[d.service] ? (
+                  <View style={styles.servicePill}>
+                    <Text style={styles.servicePillText}>{SERVICE_MAP[d.service].icon} {SERVICE_MAP[d.service].label}</Text>
+                  </View>
+                ) : null}
+                {SERVICE_MAP[d.service] && myPawsitter && !proposeService(myPawsitter, d.service) ? (
+                  <Text style={styles.ouverteBlocage}>⚠️ Tu ne proposes pas ce service dans ton profil</Text>
+                ) : null}
+
                 {d.message ? (
                   <View style={styles.messageBox}>
                     <Text style={styles.messageText}>"{d.message}"</Text>
@@ -458,4 +471,6 @@ const styles = StyleSheet.create({
   ouverteMatchBadge: { borderWidth: 1.5, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 4 },
   ouverteMatchText:  { fontSize: 13, ...FONTS.heavy },
   ouverteBlocage:    { fontSize: 12, color: COLORS.clay, marginTop: 4 },
+  servicePill:       { alignSelf: 'flex-start', backgroundColor: COLORS.warm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.warnBorder, paddingHorizontal: 12, paddingVertical: 5, marginBottom: 10 },
+  servicePillText:   { fontSize: 13, ...FONTS.bold, color: COLORS.ink },
 });

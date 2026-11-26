@@ -12,6 +12,8 @@ import {
   refuserGarde,
   supabase,
 } from '../../lib/supabase';
+import { SERVICE_MAP } from '../../lib/services';
+import AnimalFiche from '../../components/AnimalFiche';
 
 const DOG_ICON = require('../../assets/dog-icon.png');
 const CAT_ICON = require('../../assets/cat-icon.png');
@@ -186,6 +188,12 @@ export default function JournalListScreen({ garde, journauxCompletes, onSelectAn
                 )}
               </View>
 
+              {SERVICE_MAP[d.service] ? (
+                <Text style={styles.serviceLine}>{SERVICE_MAP[d.service].icon} {SERVICE_MAP[d.service].label}</Text>
+              ) : null}
+
+              {d.animaux?.map(a => <AnimalFiche key={a.id} animal={a} />)}
+
               {d.message ? (
                 <View style={styles.messageBox}>
                   <Text style={styles.messageText}>"{d.message}"</Text>
@@ -287,6 +295,8 @@ export default function JournalListScreen({ garde, journauxCompletes, onSelectAn
                   </View>
                 </View>
 
+                <AnimalFiche animal={animal} />
+
                 <View style={styles.animalFooter}>
                   <Text style={styles.animalFooterLabel}>Journal du jour</Text>
                   {done ? (
@@ -344,6 +354,7 @@ const styles = StyleSheet.create({
   dateVal:   { fontSize: 13, ...FONTS.bold, color: COLORS.ink, textTransform: 'capitalize' },
   dateSep:   { width: 1, backgroundColor: COLORS.border, marginHorizontal: 8 },
 
+  serviceLine: { fontSize: 13, ...FONTS.bold, color: COLORS.ink, marginBottom: 8 },
   messageBox: {
     backgroundColor: COLORS.warm, borderRadius: RADIUS.sm,
     padding: 12, marginBottom: 14,

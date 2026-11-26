@@ -504,16 +504,6 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
       Alert.alert('Photo manquante', 'Une photo du jardin est obligatoire si vous avez un jardin.');
       return;
     }
-    if (isProprio && mesAnimaux.length > 0) {
-      const animalErrors = validateAnimaux(mesAnimaux);
-      if (animalErrors.length > 0) {
-        Alert.alert(
-          'Champs manquants',
-          'Tous les champs sont obligatoires pour chaque animal :\n\n' + animalErrors.join('\n'),
-        );
-        return;
-      }
-    }
     if (!user?.id) return;
 
     const payload = {
@@ -601,15 +591,29 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
           if (blobErr) console.warn('Mise à jour onboarding:', blobErr.message);
           setOnboardingBlob(updatedBlob);
         }
-        await saveAnimaux(user.id, animauxFinal);
+        // Les ids réels remplacent les ids temporaires : sinon une 2e sauvegarde recréerait les animaux
+        const saved = await saveAnimaux(user.id, animauxFinal);
+        setMesAnimaux(saved);
       }
+      const animalErrors = isProprio ? validateAnimaux(mesAnimaux) : [];
       if (isPetsitter && isProfilComplet() && onProfilComplet && !profilComplet) {
         onProfilComplet();
         Alert.alert('🎉 Profil validé !', 'Ton profil pawsitter est maintenant visible. Tu peux recevoir des demandes de garde.');
+      } else if (isProprio && mesAnimaux.length === 0) {
+        Alert.alert('Profil sauvegardé ✓', 'Ajoute tes animaux et complète leur fiche pour pouvoir demander une garde.');
+      } else if (animalErrors.length > 0) {
+        Alert.alert(
+          'Brouillon enregistré',
+          'Tes demandes de garde resteront invisibles pour les pawsitters tant que ces champs ne sont pas remplis :\n\n'
+            + animalErrors.join('\n'),
+        );
       } else {
-        Alert.alert('Profil sauvegardé ✓', 'Vos informations ont été mises à jour.');
+        Alert.alert('Profil sauvegardé ✓', isProprio
+          ? 'Les fiches de tes animaux sont complètes : tu peux demander une garde.'
+          : 'Vos informations ont été mises à jour.');
       }
-    } catch {
+    } catch (e) {
+      console.error('[handleSauvegarder]', e?.message ?? e);
       Alert.alert('Erreur', 'Impossible de sauvegarder le profil. Réessaie.');
     } finally {
       setSaving(false);

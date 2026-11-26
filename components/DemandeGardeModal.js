@@ -6,7 +6,8 @@ import {
   StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Dimensions,
 } from 'react-native';
 import { COLORS, FONTS, RADIUS } from '../lib/theme';
-import { SERVICE_MAP, getTarifService, getServicesPetsitter, nbUnitesFacturees } from '../lib/services';
+import { SERVICE_MAP, SERVICES_DEMANDE, getTarifService, getServicesPetsitter, nbUnitesFacturees } from '../lib/services';
+import { champsManquants, fichesCompletes } from '../lib/animaux';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
@@ -134,9 +135,39 @@ const Section = ({ num, titre, children, right }) => (
  * @param initial     valeurs de départ pour une modification : { animaux, debut, fin, message }
  * @param onSubmit    async ({ animaux, debut, fin, message, service, nbJours, tarif, estimation }) — lever une erreur pour l'afficher
  */
+// Affiché à la place du formulaire tant que les fiches des animaux ne sont pas complètes.
+function FichesIncompletes({ mesAnimaux, onCompleter }) {
+  const incompletes = mesAnimaux
+    .map((a, i) => ({ nom: a.nom?.trim() || `Animal ${i + 1}`, manque: champsManquants(a) }))
+    .filter(x => x.manque.length > 0);
+  return (
+    <View style={st.gate}>
+      <Text style={st.gateEmoji}>📋</Text>
+      <Text style={st.gateTitre}>
+        {mesAnimaux.length === 0 ? 'Ajoute d\'abord tes animaux' : 'Complète la fiche de tes animaux'}
+      </Text>
+      <Text style={st.gateTexte}>
+        Les pawsitters ont besoin de tout savoir avant d'accepter une garde : santé, alimentation,
+        caractère et contacts. Tes demandes ne leur seront visibles qu'une fois chaque fiche complète.
+      </Text>
+      {incompletes.map(x => (
+        <View key={x.nom} style={st.gateAnimal}>
+          <Text style={st.gateAnimalNom}>🐾 {x.nom} · {x.manque.length} champ{x.manque.length > 1 ? 's' : ''} à remplir</Text>
+          <Text style={st.gateAnimalManque} numberOfLines={2}>{x.manque.join(', ')}</Text>
+        </View>
+      ))}
+      {onCompleter && (
+        <TouchableOpacity onPress={onCompleter} activeOpacity={0.85} style={[st.submitBtn, { marginTop: 8 }]}>
+          <Text style={st.submitText}>{mesAnimaux.length === 0 ? '➕ Ajouter mes animaux' : '✏️ Compléter mes fiches'}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+}
+
 export default function DemandeGardeModal({
   visible, onClose, mode = 'ouverte', titre, sousTitre, mesAnimaux = [], petsitter,
-  initial, extraHeader, submitLabel, onSubmit, onDelete,
+  initial, extraHeader, submitLabel, onSubmit, onDelete, onCompleterAnimaux,
 }) {
   const [animaux, setAnimaux] = useState([]);
   const [debut,   setDebut]   = useState(null);
@@ -146,7 +177,7 @@ export default function DemandeGardeModal({
   const [sending, setSending] = useState(false);
   const [error,   setError]   = useState(null);
 
-  const services = useMemo(() => (mode === 'directe' ? getServicesPetsitter(petsitter) : []), [mode, petsitter]);
+  const services = useMemo(() => (mode === 'directe' ? getServicesPetsitter(petsitter) : SERVICES_DEMANDE), [mode, petsitter]);
   const dispos   = useMemo(() => new Set(petsitter?.dispoDates ?? []), [petsitter]);
 
   useEffect(() => {
@@ -154,15 +185,16 @@ export default function DemandeGardeModal({
     setDebut(initial?.debut ?? null);
     setFin(initial?.fin ?? null);
     setMessage(initial?.message ?? '');
-    setService(services.length === 1 ? services[0] : null);
+    setService(initial?.service ?? (services.length === 1 ? services[0] : null));
     setError(null);
     setSending(false);
   }, [visible]);
 
-  // Animaux pré-cochés : ceux de la demande modifiée, sinon tous (y compris si la liste arrive après l'ouverture)
+  // Le propriétaire coche lui-même ses animaux ; seul un animal unique est pré-coché.
+  // Dépend aussi de mesAnimaux, au cas où la liste arrive après l'ouverture.
   useEffect(() => {
     if (!visible) return;
-    const source = initial?.animaux?.length ? initial.animaux : mesAnimaux;
+    const source = initial?.animaux?.length ? initial.animaux : (mesAnimaux.length === 1 ? mesAnimaux : []);
     const ids = new Set(source.map(a => a.id));
     setAnimaux(mesAnimaux.filter(a => ids.has(a.id)));
   }, [visible, mesAnimaux]);
@@ -179,6 +211,7 @@ export default function DemandeGardeModal({
 
   const manque =
     mesAnimaux.length > 0 && animaux.length === 0 ? 'Choisis au moins un animal'
+    : mode === 'ouverte' && !service ? 'Choisis un type de service'
     : !debut ? 'Choisis le premier jour'
     : !fin ? 'Choisis le dernier jour'
     : null;
@@ -196,6 +229,7 @@ export default function DemandeGardeModal({
   };
 
   let num = 1;
+  const fichesOk = fichesCompletes(mesAnimaux);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -211,6 +245,19 @@ export default function DemandeGardeModal({
             </TouchableOpacity>
           </View>
 
+          {!fichesOk ? (
+            <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ paddingBottom: 30 }}>
+              <FichesIncompletes
+                mesAnimaux={mesAnimaux}
+                onCompleter={onCompleterAnimaux && (() => { onClose(); onCompleterAnimaux(); })}
+              />
+              {onDelete && (
+                <TouchableOpacity onPress={onDelete} style={st.deleteBtn}>
+                  <Text style={st.deleteText}>🗑 Annuler cette demande</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          ) : (<>
           <ScrollView style={{ flexShrink: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 12 }}>
             {extraHeader}
 
@@ -246,16 +293,12 @@ export default function DemandeGardeModal({
               </Section>
             )}
 
-            <Section num={num++} titre="Quand ?">
-              <PeriodeCalendrier debut={debut} fin={fin} dispos={dispos} onChange={(d, f) => { setDebut(d); setFin(f); }} />
-            </Section>
-
             {services.length > 0 && (
-              <Section num={num++} titre="Quel service ?">
+              <Section num={num++} titre="Quel type de service ?">
                 <View style={{ gap: 8 }}>
                   {services.map(id => {
                     const svc = SERVICE_MAP[id];
-                    const t   = getTarifService(petsitter, id);
+                    const t   = mode === 'directe' ? getTarifService(petsitter, id) : null;
                     const sel = service === id;
                     return (
                       <TouchableOpacity key={id} onPress={() => setService(sel ? null : id)} activeOpacity={0.8} style={[st.serviceRow, sel && st.serviceRowSel]}>
@@ -269,6 +312,10 @@ export default function DemandeGardeModal({
                 </View>
               </Section>
             )}
+
+            <Section num={num++} titre="Quand ?">
+              <PeriodeCalendrier debut={debut} fin={fin} dispos={dispos} onChange={(d, f) => { setDebut(d); setFin(f); }} />
+            </Section>
 
             <Section num={num++} titre="Un mot (optionnel)">
               <TextInput
@@ -300,6 +347,9 @@ export default function DemandeGardeModal({
                 {animaux.length > 0 && (
                   <Text style={st.recapLigne} numberOfLines={1}>🐾 {animaux.map(a => a.nom).join(', ')}</Text>
                 )}
+                {service && (
+                  <Text style={st.recapLigne}>{SERVICE_MAP[service].icon} {SERVICE_MAP[service].label}</Text>
+                )}
                 {estimation != null && (
                   <Text style={st.recapPrix}>≈ {estimation} € <Text style={st.recapPrixSub}>({tarif} €{unite})</Text></Text>
                 )}
@@ -317,6 +367,7 @@ export default function DemandeGardeModal({
                 : <Text style={[st.submitText, manque && { color: COLORS.muted }]}>{manque ?? submitLabel}</Text>}
             </TouchableOpacity>
           </View>
+          </>)}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -386,6 +437,14 @@ const st = StyleSheet.create({
   msgInput:  { backgroundColor: COLORS.white, borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: 12, fontSize: 14, color: COLORS.ink, minHeight: 80, textAlignVertical: 'top' },
 
   deleteBtn:  { alignItems: 'center', padding: 12, marginHorizontal: 20 },
+
+  gate:             { paddingHorizontal: 20, alignItems: 'stretch' },
+  gateEmoji:        { fontSize: 40, textAlign: 'center', marginBottom: 6 },
+  gateTitre:        { fontSize: 18, ...FONTS.heavy, color: COLORS.ink, textAlign: 'center', marginBottom: 8 },
+  gateTexte:        { fontSize: 14, color: COLORS.muted, textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  gateAnimal:       { backgroundColor: COLORS.warnBg, borderWidth: 1, borderColor: COLORS.warnBorder, borderRadius: RADIUS.md, padding: 12, marginBottom: 8 },
+  gateAnimalNom:    { fontSize: 14, ...FONTS.bold, color: COLORS.ink, marginBottom: 2 },
+  gateAnimalManque: { fontSize: 12, color: COLORS.clay },
   deleteText: { fontSize: 14, ...FONTS.bold, color: COLORS.alert },
 
   footer:       { borderTopWidth: 1, borderTopColor: COLORS.border, paddingHorizontal: 20, paddingTop: 12, paddingBottom: Platform.OS === 'ios' ? 34 : 18, backgroundColor: COLORS.cream },

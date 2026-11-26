@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, RADIUS, SHADOW } from '../lib/theme';
+import { champsManquants } from '../lib/animaux';
 
 const DOG_ICON = require('../assets/dog-icon.png');
 const CAT_ICON = require('../assets/cat-icon.png');
@@ -451,43 +452,11 @@ const AnimalCard = ({ animal, index, onChange, onRemove }) => {
   );
 };
 
-const ANIMAL_REQUIRED_FIELDS = [
-  ['nom',           'Nom'],
-  ['type',          'Type'],
-  ['race',          'Race'],
-  ['sexe',          'Sexe'],
-  ['age',           'Âge'],
-  ['poids',         'Poids'],
-  ['sterilise',     'Stérilisé / Castré'],
-  ['vaccins',       'Vaccins à jour'],
-  ['carnet',        'Carnet de santé'],
-  ['maladies',      'Maladies chroniques'],
-  ['allergies',     'Allergies / Intolérances'],
-  ['medicaments',   'Médicaments en cours'],
-  ['typeAlim',      "Type d'alimentation"],
-  ['freqRepas',     'Fréquence des repas'],
-  ['quantiteRepas', 'Quantité & marque'],
-  ['description',   'Description du caractère'],
-  ['avecChiens',    "Avec d'autres chiens"],
-  ['avecChats',     'Avec des chats'],
-  ['avecEnfants',   'Avec des enfants'],
-  ['avecEtrangers', 'Avec des étrangers'],
-  ['vetoNom',       'Vétérinaire — Nom'],
-  ['vetoTel',       'Vétérinaire — Téléphone'],
-  ['urgenceNom',    "Contact d'urgence — Nom"],
-  ['urgenceTel',    "Contact d'urgence — Téléphone"],
-];
-
 export const validateAnimaux = (animaux) => {
   const errors = [];
   animaux.forEach((a, i) => {
     const label = a.nom?.trim() ? `« ${a.nom} »` : `Animal ${i + 1}`;
-    const missing = ANIMAL_REQUIRED_FIELDS
-      .filter(([field]) => {
-        const v = a[field];
-        return v === null || v === undefined || (typeof v === 'string' && v.trim() === '');
-      })
-      .map(([, name]) => name);
+    const missing = champsManquants(a);
     if (missing.length > 0) errors.push(`${label} : ${missing.join(', ')}`);
   });
   return errors;

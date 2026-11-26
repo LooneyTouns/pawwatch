@@ -395,11 +395,16 @@ export default function App() {
       return <AdminProfilView user={user} onLogout={handleLogout} />;
     }
     if (role === 'proprietaire') {
-      if (activeTab === 'journal')  return <JournalScreen  garde={gardeEnCours} user={user} onGardeTerminee={() => setGardeEnCours(null)} />;
-      if (activeTab === 'chercher') return <SearchPetsitterScreen user={user} onMatch={handleMatch} />;
+      const ouvrirFichesAnimaux = () => { setProfilInitialTab('modifier'); setActiveTab('profil'); };
+      if (activeTab === 'journal')  return <JournalScreen  garde={gardeEnCours} user={user} onGardeTerminee={() => setGardeEnCours(null)} onCompleterAnimaux={ouvrirFichesAnimaux} />;
+      if (activeTab === 'chercher') return <SearchPetsitterScreen user={user} onMatch={handleMatch} onCompleterAnimaux={ouvrirFichesAnimaux} />;
       if (activeTab === 'paiement') return <PaiementScreen garde={gardeEnCours} user={user} />;
       if (activeTab === 'messages') return renderMessages();
-      if (activeTab === 'profil')   return <ProfilScreen user={user} onLogout={handleLogout} initialData={onboardingAnswers} />;
+      if (activeTab === 'profil')   return (
+        <ProfilScreen user={user} onLogout={handleLogout} initialData={onboardingAnswers}
+          initialTab={profilInitialTab}
+          onInitialTabConsumed={() => setProfilInitialTab('profil')} />
+      );
     }
     if (role === 'petsitter') {
       if (activeTab === 'journal')  return renderJournalPetsitter();

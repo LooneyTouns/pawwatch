@@ -10,6 +10,8 @@ import { Badge, Avatar, Card, SectionLabel } from '../../components/UI';
 import { getJournaux, validerJournal, marquerGardeTerminee, soumettreAvis, hasAvis, getHistoriqueProprio, getMesDemandesOuvertes, annulerDemandeOuverte, creerDemandeOuverte, modifierDemandeOuverte, getAnimaux } from '../../lib/supabase';
 import { sendLocalNotification } from '../../hooks/useNotifications';
 import DemandeGardeModal from '../../components/DemandeGardeModal';
+import { SERVICE_MAP } from '../../lib/services';
+import { fichesCompletes } from '../../lib/animaux';
 
 const DOG_ICON = require('../../assets/dog-icon.png');
 const CAT_ICON = require('../../assets/cat-icon.png');
@@ -123,7 +125,7 @@ const av = StyleSheet.create({
 const formatDate = (str) =>
   new Date(str).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
-export default function JournalScreen({ garde, user, onGardeTerminee }) {
+export default function JournalScreen({ garde, user, onGardeTerminee, onCompleterAnimaux }) {
   const [journaux,      setJournaux]      = useState([]);
   const [historique,    setHistorique]    = useState([]);
   const [loading,       setLoading]       = useState(true);
@@ -136,6 +138,7 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
   // ── Demandes de garde ──
   const [mesDemandes,      setMesDemandes]      = useState([]);
   const [mesAnimaux,       setMesAnimaux]       = useState([]);
+  const [animauxCharges,   setAnimauxCharges]   = useState(false);
   const [showDemandeModal, setShowDemandeModal] = useState(false);
   const [editingDemande,   setEditingDemande]   = useState(null); // null = création, objet = édition
 
@@ -156,15 +159,16 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
     if (!user?.id) return;
     getHistoriqueProprio(user.id).then(setHistorique).catch(() => {});
     getMesDemandesOuvertes(user.id).then(setMesDemandes).catch(() => {});
-    getAnimaux(user.id).then(setMesAnimaux).catch(() => {});
+    getAnimaux(user.id).then(setMesAnimaux).catch(() => {}).finally(() => setAnimauxCharges(true));
   }, [user?.id]);
 
   // Les erreurs remontent jusqu'au formulaire, qui les affiche sans perdre la saisie.
-  const handleSauvegarderDemande = async ({ animaux, debut, fin, message }) => {
+  const handleSauvegarderDemande = async ({ animaux, debut, fin, message, service }) => {
     const payload = {
       date_debut: debut,
       date_fin:   fin,
       message:    message || null,
+      service,
       animal_ids: animaux.map(a => a.id),
     };
     const etaitEdition = !!editingDemande;
@@ -210,6 +214,20 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
         {/* ── Mes demandes de garde ── */}
         <SectionLabel label={`📅 Mes demandes de garde (${mesDemandes.length})`} />
 
+        {animauxCharges && !fichesCompletes(mesAnimaux) && (
+          <TouchableOpacity style={styles.fichesAlerte} onPress={onCompleterAnimaux} activeOpacity={0.85} disabled={!onCompleterAnimaux}>
+            <Text style={styles.fichesAlerteTitre}>
+              {mesAnimaux.length === 0 ? '📋 Ajoute tes animaux pour demander une garde' : '📋 Fiches de tes animaux incomplètes'}
+            </Text>
+            <Text style={styles.fichesAlerteTexte}>
+              {mesDemandes.length > 0
+                ? 'Tes demandes ne sont pas visibles par les pawsitters tant que chaque fiche n\'est pas complète.'
+                : 'Les pawsitters ont besoin de toutes les infos sur tes animaux avant d\'accepter une garde.'}
+              {onCompleterAnimaux ? ' Appuie ici pour les compléter →' : ''}
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {mesDemandes.length === 0 ? (
           <Card style={{ marginBottom: 4 }}>
             <View style={styles.demandeVide}>
@@ -234,6 +252,9 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
                         {formatDateFr(d.date_debut)} → {formatDateFr(d.date_fin)}
                       </Text>
                       <Text style={styles.demandeAnimal}>{animauxList}</Text>
+                      {SERVICE_MAP[d.service] ? (
+                        <Text style={styles.demandeAnimal}>{SERVICE_MAP[d.service].icon} {SERVICE_MAP[d.service].label}</Text>
+                      ) : null}
                       {d.message ? (
                         <Text style={styles.demandeMsg} numberOfLines={2}>"{d.message}"</Text>
                       ) : null}
@@ -315,10 +336,12 @@ export default function JournalScreen({ garde, user, onGardeTerminee }) {
           debut:   editingDemande.date_debut,
           fin:     editingDemande.date_fin,
           message: editingDemande.message,
+          service: editingDemande.service,
         } : null}
         submitLabel={editingDemande ? '💾 Enregistrer les modifications' : '📢 Publier la demande'}
         onSubmit={handleSauvegarderDemande}
         onDelete={editingDemande ? () => handleAnnulerDemande(editingDemande.id) : undefined}
+        onCompleterAnimaux={onCompleterAnimaux}
       />
     </View>
   );
@@ -782,6 +805,9 @@ const styles = StyleSheet.create({
   demandeVide:       { alignItems: 'center', paddingVertical: 20 },
   demandeVideTitle:  { fontSize: 15, ...FONTS.bold, color: COLORS.ink, marginTop: 10 },
   demandeVideSub:    { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginTop: 6, lineHeight: 19 },
+  fichesAlerte:      { backgroundColor: COLORS.warnBg, borderWidth: 1.5, borderColor: COLORS.warnBorder, borderRadius: RADIUS.md, padding: 14, marginBottom: 12 },
+  fichesAlerteTitre: { fontSize: 14, ...FONTS.heavy, color: COLORS.ink, marginBottom: 4 },
+  fichesAlerteTexte: { fontSize: 13, color: COLORS.clay, lineHeight: 19 },
 
   histCard:      { marginBottom: 10 },
   histRow:       { flexDirection: 'row', alignItems: 'center' },

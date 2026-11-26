@@ -204,7 +204,7 @@ const fi = StyleSheet.create({
   locDisabled: { fontSize: 13, color: COLORS.muted, fontStyle: 'italic', paddingVertical: 4 },
 });
 
-export default function SearchPetsitterScreen({ user, onMatch }) {
+export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimaux }) {
   const [allPawsitters, setAllPawsitters] = useState([]);
   const [pawsitters,    setPawsitters]    = useState([]);
   const [loadingList,   setLoadingList]   = useState(true);
@@ -379,6 +379,7 @@ export default function SearchPetsitterScreen({ user, onMatch }) {
       date_debut: debut,
       date_fin:   fin,
       message:    message || null,
+      service:    service ?? null,
       statut:     'en_attente',
       tarif_jour: tarif,
       nb_jours:   tarif != null ? nbUnitesFacturees(service, nbJours) : null,
@@ -414,13 +415,14 @@ export default function SearchPetsitterScreen({ user, onMatch }) {
     extrapolate: 'clamp',
   });
 
-  const handlePublierDemande = async ({ animaux, debut, fin, message }) => {
+  const handlePublierDemande = async ({ animaux, debut, fin, message, service }) => {
     await creerDemandeOuverte({
       proprio_id: user.id,
       animal_ids: animaux.map(a => a.id),
       date_debut: debut,
       date_fin:   fin,
       message:    message || null,
+      service,
     });
     setModalOuverteOpen(false);
     getMesDemandesOuvertes(user.id).then(setMesDemandesOuvertes).catch(() => {});
@@ -495,6 +497,7 @@ export default function SearchPetsitterScreen({ user, onMatch }) {
       mesAnimaux={mesAnimaux}
       submitLabel="📢 Publier la demande"
       onSubmit={handlePublierDemande}
+      onCompleterAnimaux={onCompleterAnimaux}
     />
   );
 
@@ -589,7 +592,7 @@ export default function SearchPetsitterScreen({ user, onMatch }) {
           {mesDemandesOuvertes.map(d => (
             <View key={d.id} style={styles.ouvertePill}>
               <Text style={styles.ouvertePillText}>
-                📢 {d.animaux?.length ? d.animaux.map(a => a.nom).join(', ') : 'Garde'} · {new Date(d.date_debut + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}→{new Date(d.date_fin + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                {SERVICE_MAP[d.service]?.icon ?? '📢'} {d.animaux?.length ? d.animaux.map(a => a.nom).join(', ') : 'Garde'} ·{new Date(d.date_debut + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}→{new Date(d.date_fin + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
               </Text>
               <TouchableOpacity onPress={() => handleAnnulerDemande(d.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                 <Text style={styles.ouvertePillClose}>✕</Text>
@@ -803,6 +806,7 @@ export default function SearchPetsitterScreen({ user, onMatch }) {
         extraHeader={renderCompat(swipedPetsitter)}
         submitLabel="📤 Envoyer la demande"
         onSubmit={data => envoyerDemandeDirecte(swipedPetsitter, data)}
+        onCompleterAnimaux={onCompleterAnimaux}
       />
 
       {/* Demande directe depuis la carte */}
@@ -816,6 +820,7 @@ export default function SearchPetsitterScreen({ user, onMatch }) {
         petsitter={selectedPetsitterMap}
         submitLabel="📤 Envoyer la demande"
         onSubmit={data => envoyerDemandeDirecte(selectedPetsitterMap, data)}
+        onCompleterAnimaux={onCompleterAnimaux}
       />
     </View>
   );
