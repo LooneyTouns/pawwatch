@@ -169,9 +169,9 @@ export default function App() {
     setUser(u);
     const r = normRole(u.user_metadata?.role);
     setRole(r);
-    if (isNewUser && !u.user_metadata?.isAdmin) {
+    if (isNewUser && !u.app_metadata?.isAdmin) {
       setShowOnboarding(true);
-    } else if (!isNewUser && u.id && !u.user_metadata?.isAdmin) {
+    } else if (!isNewUser && u.id && !u.app_metadata?.isAdmin) {
       // Charger les données Supabase après connexion
       getGardesEnCours(u.id, r).then(data => {
         if (data && data.length > 0) setGardeEnCours(data[0]);
@@ -316,7 +316,7 @@ export default function App() {
 
   const adminTab = { id: 'admin', icon: '🛠', label: 'Admin' };
 
-  const tabs = user?.user_metadata?.isAdmin
+  const tabs = user?.app_metadata?.isAdmin
     ? [
         journalTab,
         messagesTab,
@@ -399,11 +399,11 @@ export default function App() {
 
   const renderScreen = () => {
     // Admin overlay — visible quel que soit le rôle sélectionné
-    if (user?.user_metadata?.isAdmin && activeTab === 'admin') {
+    if (user?.app_metadata?.isAdmin && activeTab === 'admin') {
       return <AdminScreen onLogout={handleLogout} />;
     }
     // Admin profil : vue dédiée simple (ProfilScreen est conçu pour les petsitters standards)
-    if (user?.user_metadata?.isAdmin && activeTab === 'profil') {
+    if (user?.app_metadata?.isAdmin && activeTab === 'profil') {
       return <AdminProfilView user={user} onLogout={handleLogout} />;
     }
     if (role === 'proprietaire') {
@@ -470,7 +470,7 @@ export default function App() {
             </TouchableOpacity>
 
             {/* Toggle rôle admin uniquement */}
-            {user?.user_metadata?.isAdmin && (
+            {user?.app_metadata?.isAdmin && (
               <View style={styles.roleToggle}>
                 {[
                   { id: 'proprietaire', label: '🏠' },
