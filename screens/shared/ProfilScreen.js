@@ -16,7 +16,7 @@ import { Card, Avatar, SectionLabel, PhotoUpload, AnimalEditor, PriceInput, vali
 import AddressAutocomplete from '../../components/AddressAutocomplete';
 import CalendrierDispo from '../../components/CalendrierDispo';
 import { getDisponibilites, saveDisponibilites } from '../../lib/supabase';
-import { onboardingToAnimaux, onboardingToPetsitter } from '../../lib/onboardingMap';
+import { onboardingToAnimaux, onboardingToPetsitter, nettoyerOnboarding } from '../../lib/onboardingMap';
 
 const DOG_ICON = require('../../assets/dog-icon.png');
 const CAT_ICON = require('../../assets/cat-icon.png');
@@ -103,7 +103,7 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
   const [profileStats,    setProfileStats]    = useState({ gardes: 0, note: null, nb_avis: 0 });
   const [saving,          setSaving]          = useState(false);
   // Blob des réponses d'onboarding (persisté dans users.onboarding), maintenu à jour aux sauvegardes
-  const [onboardingBlob,  setOnboardingBlob]  = useState(() => initialData ?? null);
+  const [onboardingBlob,  setOnboardingBlob]  = useState(() => nettoyerOnboarding(initialData ?? null));
 
   // Charger la photo et les stats depuis Supabase
   // ── Lat/lon sauvegardées depuis AddressAutocomplete ──
@@ -619,8 +619,8 @@ export default function ProfilScreen({ user, onLogout, onProfilComplet, profilCo
           // Persister les URLs dans users.onboarding
           const updatedBlob = { ...(onboardingBlob || {}) };
           animauxFinal.forEach((a, idx) => { if (a.photo) updatedBlob[`photo_nom_animal_${idx}`] = a.photo; });
-          const { error: blobErr } = await supabase.from('users').update({ onboarding: updatedBlob }).eq('id', user.id);
-          if (blobErr) console.warn('Mise à jour onboarding:', blobErr.message);
+          await updateUserProfile(user.id, { onboarding: updatedBlob })
+            .catch(e => console.warn('Mise à jour onboarding:', e?.message));
           setOnboardingBlob(updatedBlob);
         }
         // Les ids réels remplacent les ids temporaires : sinon une 2e sauvegarde recréerait les animaux

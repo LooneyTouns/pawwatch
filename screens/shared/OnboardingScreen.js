@@ -19,7 +19,7 @@ import { COLORS, FONTS, RADIUS } from '../../lib/theme';
 import { supabase, signUp, saveAnimaux, uploadAnimalPhoto } from '../../lib/supabase';
 import AddressAutocomplete from '../../components/AddressAutocomplete';
 import { PriceInput, PRICE_RANGES } from '../../components/UI';
-import { onboardingToAnimaux, onboardingToPetsitter } from '../../lib/onboardingMap';
+import { onboardingToAnimaux, onboardingToPetsitter, nettoyerOnboarding } from '../../lib/onboardingMap';
 
 // Barème par service — aligné sur celui du profil pawsitter (PRICE_RANGES)
 const SERVICE_TARIFS = {
@@ -703,7 +703,7 @@ export default function OnboardingScreen({ user, onComplete, onSkip }) {
         }));
         // Mettre à jour le blob onboarding en DB avec les URLs permanentes
         const { error: blobErr } = await supabase.from('users')
-          .update({ onboarding: updatedAnswers })
+          .update({ onboarding: nettoyerOnboarding(updatedAnswers) })
           .eq('id', userId);
         if (blobErr) console.warn('Mise à jour onboarding:', blobErr.message);
         // Propager les URLs dans finalAnswers pour la suite (saveAnimaux, onComplete)
@@ -720,7 +720,7 @@ export default function OnboardingScreen({ user, onComplete, onSkip }) {
       // Copie aussi dans user_metadata (best-effort : échoue si l'email doit être confirmé,
       // ce n'est pas grave, le blob est déjà dans la table users via signUp)
       await supabase.auth.updateUser({
-        data: { onboarding: finalAnswers, onboarding_done: true },
+        data: { onboarding: nettoyerOnboarding(finalAnswers), onboarding_done: true },
       }).catch(() => {});
       onComplete(finalAnswers, data.user, data.session);
     } catch (e) {
