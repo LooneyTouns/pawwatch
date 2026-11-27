@@ -1,2 +1,10 @@
 node_modules
+.expo
+dist/
 .vercel
+
+# Local Netlify folder
+.netlify
+
+# État local de la CLI Supabase
+supabase/.temp/

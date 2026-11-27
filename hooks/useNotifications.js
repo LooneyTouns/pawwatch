@@ -1,83 +1,66 @@
-// hooks/useNotifications.js — Notifications push avec Expo
 import { useState, useEffect, useRef } from 'react';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
 
-// Configuration globale : afficher la notif même si l'app est ouverte
-try {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
-} catch (e) {
-  console.warn('setNotificationHandler non disponible:', e.message);
+const IS_WEB = Platform.OS === 'web';
+
+// Native uniquement : afficher la notif même si l'app est au premier plan
+if (!IS_WEB) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList:   true,
+        shouldPlaySound:  true,
+        shouldSetBadge:   true,
+      }),
+    });
+  } catch {}
 }
 
 export function useNotifications(userId) {
   const [expoPushToken, setExpoPushToken] = useState(null);
-  const [notification, setNotification] = useState(null);
   const notificationListener = useRef();
-  const responseListener = useRef();
+  const responseListener     = useRef();
 
   useEffect(() => {
+    if (IS_WEB) return; // expo-notifications non supporté sur web
+
     registerForPushNotificationsAsync(userId)
       .then(token => { if (token) setExpoPushToken(token); })
-      .catch(e => console.warn('Push token error:', e.message));
+      .catch(() => {});
 
     try {
-      notificationListener.current = Notifications.addNotificationReceivedListener(notif => {
-        setNotification(notif);
-      });
-      responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-        console.log('Notif cliquée:', response);
-      });
-    } catch (e) {
-      console.warn('Notification listeners non disponibles:', e.message);
-    }
+      notificationListener.current = Notifications.addNotificationReceivedListener(() => {});
+      responseListener.current     = Notifications.addNotificationResponseReceivedListener(() => {});
+    } catch {}
 
     return () => {
-      try {
-        if (notificationListener.current)
-          Notifications.removeNotificationSubscription(notificationListener.current);
-        if (responseListener.current)
-          Notifications.removeNotificationSubscription(responseListener.current);
-      } catch (e) {}
+      try { notificationListener.current?.remove(); } catch {}
+      try { responseListener.current?.remove();     } catch {}
     };
   }, [userId]);
 
-  return { expoPushToken, notification };
+  return { expoPushToken };
 }
 
 async function registerForPushNotificationsAsync(userId) {
-  if (!Device.isDevice) {
-    console.warn('Les notifs push nécessitent un vrai appareil.');
-    return null;
-  }
+  if (!Device.isDevice) return null;
 
   let finalStatus = 'undetermined';
   try {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    finalStatus = existingStatus;
-    if (existingStatus !== 'granted') {
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    finalStatus = existing;
+    if (existing !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-  } catch (e) {
-    console.warn('Permissions notifs non disponibles:', e.message);
-    return null;
-  }
+  } catch { return null; }
 
-  if (finalStatus !== 'granted') {
-    console.warn('Permission notifs refusée.');
-    return null;
-  }
+  if (finalStatus !== 'granted') return null;
 
-  // Canal Android obligatoire
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('pawwatch', {
       name: 'PawWatch',
@@ -93,34 +76,46 @@ async function registerForPushNotificationsAsync(userId) {
       await supabase.from('users').update({ push_token: token }).eq('id', userId);
     }
     return token;
-  } catch (e) {
-    console.warn('Push token non disponible:', e.message);
-    return null;
+  } catch { return null; }
+}
+
+// ─── Notification locale immédiate ───────────────────────────────
+export async function sendLocalNotification({ title, body }) {
+  if (IS_WEB) {
+    // Fallback : API Notification du navigateur
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission === 'default') {
+      await Notification.requestPermission().catch(() => {});
+    }
+    if (Notification.permission === 'granted') {
+      try { new Notification(title, { body, icon: '/assets/logo.a556ee6608e4a92b8c5e983ad71eecf2.png' }); } catch {}
+    }
+    return;
   }
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body, sound: true },
+      trigger: null,
+    });
+  } catch {}
 }
 
-// ─── Envoyer une notif locale (test, rappels) ────────────────────
-export async function sendLocalNotification({ title, body, data = {} }) {
-  await Notifications.scheduleNotificationAsync({
-    content: { title, body, data, sound: true },
-    trigger: null, // immédiat
-  });
-}
-
-// ─── Planifier un rappel quotidien à 20h ─────────────────────────
+// ─── Rappel quotidien à 20h (natif uniquement) ───────────────────
 export async function scheduleJournalReminder(gardienName) {
-  await Notifications.cancelAllScheduledNotificationsAsync();
-
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '🐾 Journal non rempli',
-      body: `${gardienName}, le journal de ce soir n'a pas encore été envoyé.`,
-      data: { screen: 'JournalForm' },
-    },
-    trigger: {
-      hour: 20,
-      minute: 0,
-      repeats: true,
-    },
-  });
+  if (IS_WEB) return; // Notifications planifiées impossibles sans Service Worker sur web
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '🐾 Journal non rempli',
+        body:  `${gardienName}, le journal de ce soir n'a pas encore été envoyé.`,
+        data:  { screen: 'JournalForm' },
+      },
+      trigger: {
+        type:   Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour:   20,
+        minute: 0,
+      },
+    });
+  } catch {}
 }

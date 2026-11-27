@@ -24,7 +24,7 @@ export default function MessagesScreen({ conversations = [], onOpenChat }) {
           <Text style={ms.emptyEmoji}>💬</Text>
           <Text style={ms.emptyTitle}>Aucune conversation</Text>
           <Text style={ms.emptySub}>
-            Propose une garde à un petsitter pour démarrer une conversation.
+            Propose une garde à un pawsitter pour démarrer une conversation.
           </Text>
         </View>
       </View>
