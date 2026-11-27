@@ -9,11 +9,12 @@ const EARTH_ICON = require('../../assets/earth-icon.png');
 import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
 import { Avatar, Badge } from '../../components/UI';
 import DemandeGardeModal from '../../components/DemandeGardeModal';
+import { AvisListe, AvisModal } from '../../components/AvisPawsitter';
 import {
   creerGarde, getPawsitters, getAnimaux, getUserProfile,
   creerDemandeOuverte, getMesDemandesOuvertes, annulerDemandeOuverte,
 } from '../../lib/supabase';
-import { SERVICE_MAP, getTarifService, nbUnitesFacturees } from '../../lib/services';
+import { SERVICE_MAP, SERVICES_DEMANDE, getTarifService, nbUnitesFacturees, proposeService } from '../../lib/services';
 import { calculerCompatibilite, matchColor } from '../../lib/matching';
 import MapScreen from './MapScreen';
 import * as Location from 'expo-location';
@@ -38,7 +39,7 @@ const NOTE_OPTIONS   = [{ label: '3+ ⭐', val: 3 }, { label: '4+ ⭐', val: 4 }
 const DIST_OPTIONS   = [5, 10, 20, 50];
 const DIST_LABELS    = ['5 km', '10 km', '20 km', '50 km'];
 
-const DEFAULT_FILTERS = { tarifMax: 999, animaux: [], dispo: null, noteMin: null, distMax: null };
+const DEFAULT_FILTERS = { services: [], tarifMax: 999, animaux: [], dispo: null, noteMin: null, distMax: null };
 
 function haversine(lat1, lon1, lat2, lon2) {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return null;
@@ -56,7 +57,10 @@ function applyFilters(list, f, userCoords) {
   const mois    = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
 
   return list.filter(p => {
-    if (p.tarif > f.tarifMax) return false;
+    if (f.services.length > 0 && !f.services.some(s => proposeService(p, s))) return false;
+    // Un seul service choisi : le tarif max s'applique au prix de ce service, pas au tarif vitrine
+    const tarif = f.services.length === 1 ? getTarifService(p, f.services[0]) : p.tarif;
+    if (tarif != null && tarif > f.tarifMax) return false;
     if (f.noteMin && p.note < f.noteMin) return false;
     if (f.animaux.length > 0 && !f.animaux.some(a => p.animaux?.includes(a))) return false;
     if (f.dispo) {
@@ -76,6 +80,7 @@ function applyFilters(list, f, userCoords) {
 
 function countActiveFilters(f) {
   let n = 0;
+  if (f.services.length)  n++;
   if (f.tarifMax !== 999) n++;
   if (f.noteMin)          n++;
   if (f.dispo)            n++;
@@ -116,7 +121,22 @@ function FilterModal({ visible, filters, onApply, onClose, hasLocation }) {
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
+            <Text style={fi.sectionLabel}>SERVICE RECHERCHÉ</Text>
+            <View style={fi.row}>
+              {SERVICES_DEMANDE.map(s => (
+                <Chip key={s} label={`${SERVICE_MAP[s].icon} ${SERVICE_MAP[s].label}`}
+                  active={local.services.includes(s)}
+                  onPress={() => toggle('services', s)}
+                />
+              ))}
+            </View>
+
             <Text style={fi.sectionLabel}>TARIF MAX</Text>
+            {local.services.length === 1 && (
+              <Text style={fi.hint}>
+                Comparé au tarif « {SERVICE_MAP[local.services[0]].label} » de chaque pawsitter, {SERVICE_MAP[local.services[0]].unit.replace('/', 'par ')}
+              </Text>
+            )}
             <View style={fi.row}>
               {TARIF_OPTIONS.map((t, i) => (
                 <Chip key={t} label={TARIF_LABELS[i]}
@@ -202,6 +222,7 @@ const fi = StyleSheet.create({
   cancelBtn:   { padding: 12, alignItems: 'center' },
   cancelText:  { fontSize: 14, color: COLORS.muted },
   locDisabled: { fontSize: 13, color: COLORS.muted, fontStyle: 'italic', paddingVertical: 4 },
+  hint:        { fontSize: 12, color: COLORS.muted, fontStyle: 'italic', marginTop: -4, marginBottom: 8 },
 });
 
 export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimaux }) {
@@ -228,6 +249,7 @@ export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimau
   // ── Demande privée (depuis la carte) ──────────────────────────────
   const [selectedPetsitterMap, setSelectedPetsitterMap] = useState(null);
   const [showDemandePrivee,    setShowDemandePrivee]    = useState(false);
+  const [avisPawsitter,        setAvisPawsitter]        = useState(null);
 
   const position = useRef(new Animated.ValueXY()).current;
   const swipeAnim = useRef(new Animated.Value(1)).current;
@@ -405,7 +427,7 @@ export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimau
     }
     Alert.alert(
       '✨ Demande envoyée !',
-      `${petsitter?.nom} a reçu ta demande. La conversation est ouverte dans l'onglet Messages.`
+      `${petsitter?.nom} a reçu ta demande. Suis la réponse dans l'onglet Journal ; la conversation est ouverte dans Messages.`
     );
   };
 
@@ -483,6 +505,18 @@ export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimau
         {blocages.map((b, i) => (
           <Text key={i} style={styles.modalMatchBlocage}>{b}</Text>
         ))}
+      </View>
+    );
+  };
+
+  // Derniers avis du pawsitter, en tête du formulaire de demande directe
+  const renderAvisApercu = (ps) => {
+    const nb = ps?.nb_avis ?? ps?.avis ?? 0;
+    if (!ps?.id || !nb) return null;
+    return (
+      <View style={styles.avisApercu}>
+        <Text style={styles.avisApercuTitre}>⭐ {ps.note} sur 5 · {nb} avis</Text>
+        <AvisListe pawsitterId={ps.id} limite={2} />
       </View>
     );
   };
@@ -707,9 +741,15 @@ export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimau
         {/* Avatar */}
         <View style={styles.avatarZone}>
           <Avatar initials={current.initiales} size={100} photoUri={current.photo_url} />
-          <View style={styles.noteRow}>
-            <Text style={styles.noteText}>⭐ {current.note} · {current.nb_avis} avis</Text>
-          </View>
+          {current.nb_avis > 0 ? (
+            <TouchableOpacity style={styles.noteRow} onPress={() => setAvisPawsitter(current)} activeOpacity={0.75} hitSlop={8}>
+              <Text style={styles.noteText}>⭐ {current.note} · {current.nb_avis} avis ›</Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.noteRow}>
+              <Text style={styles.noteText}>✨ Nouveau pawsitter</Text>
+            </View>
+          )}
         </View>
 
         {/* Infos */}
@@ -803,7 +843,7 @@ export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimau
         sousTitre={`à ${swipedPetsitter?.nom ?? ''}`}
         mesAnimaux={mesAnimaux}
         petsitter={swipedPetsitter}
-        extraHeader={renderCompat(swipedPetsitter)}
+        extraHeader={<>{renderCompat(swipedPetsitter)}{renderAvisApercu(swipedPetsitter)}</>}
         submitLabel="📤 Envoyer la demande"
         onSubmit={data => envoyerDemandeDirecte(swipedPetsitter, data)}
         onCompleterAnimaux={onCompleterAnimaux}
@@ -818,10 +858,13 @@ export default function SearchPetsitterScreen({ user, onMatch, onCompleterAnimau
         sousTitre={`à ${selectedPetsitterMap?.nom ?? ''}`}
         mesAnimaux={mesAnimaux}
         petsitter={selectedPetsitterMap}
+        extraHeader={renderAvisApercu(selectedPetsitterMap)}
         submitLabel="📤 Envoyer la demande"
         onSubmit={data => envoyerDemandeDirecte(selectedPetsitterMap, data)}
         onCompleterAnimaux={onCompleterAnimaux}
       />
+
+      <AvisModal visible={!!avisPawsitter} pawsitter={avisPawsitter} onClose={() => setAvisPawsitter(null)} />
     </View>
   );
 }
@@ -887,6 +930,8 @@ const styles = StyleSheet.create({
   avatarZone: { alignItems: 'center', paddingTop: 32, paddingBottom: 16, backgroundColor: 'rgba(255,255,255,0.3)' },
   noteRow:    { marginTop: 10 },
   noteText:   { fontSize: 13, ...FONTS.bold, color: COLORS.ink },
+  avisApercu:      { marginHorizontal: 20, marginBottom: 18, gap: 8 },
+  avisApercuTitre: { fontSize: 15, ...FONTS.heavy, color: COLORS.ink },
 
   infos:    { padding: 20 },
   nameRow:  { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 4 },

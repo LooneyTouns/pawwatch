@@ -14,13 +14,14 @@ import {
   getDemandesOuvertes,
   accepterDemandeOuverte,
   getUserProfile,
+  getDisponibilites,
   formatPawsitter,
   createOrGetConversation,
   sendMessage,
   supabase,
 } from '../../lib/supabase';
-import { calculerCompatibilite, matchColor } from '../../lib/matching';
-import { SERVICE_MAP, proposeService } from '../../lib/services';
+import { calculerCompatibilite, matchColor, adequationDemande, trierDemandesOuvertes } from '../../lib/matching';
+import { SERVICE_MAP } from '../../lib/services';
 import AnimalFiche from '../../components/AnimalFiche';
 
 const MIN_COMMENT = 10;
@@ -100,7 +101,7 @@ const av = StyleSheet.create({
 const formatDate = (str) =>
   new Date(str).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
-export default function DemandesScreen({ user }) {
+export default function DemandesScreen({ user, onOuvrirDispos }) {
   const [historique,    setHistorique]    = useState([]);
   const [loading,       setLoading]       = useState(true);
   const [error,         setError]         = useState(null);
@@ -111,18 +112,21 @@ export default function DemandesScreen({ user }) {
   const [ouvertes,      setOuvertes]      = useState([]);   // demandes ouvertes (tous proprios)
   const [myPawsitter,   setMyPawsitter]   = useState(null); // mon profil formaté, pour le score de compatibilité
   const [acceptingId,   setAcceptingId]   = useState(null);
+  const [mesDispos,     setMesDispos]     = useState([]);
 
   const load = useCallback(async (quiet = false) => {
     if (!user?.id) return;
     if (!quiet) { setLoading(true); setError(null); }
     try {
-      const [hist, open, profile] = await Promise.all([
+      const [hist, open, profile, dispos] = await Promise.all([
         getHistoriqueGardien(user.id),
         getDemandesOuvertes().catch(() => []),
         getUserProfile(user.id).catch(() => null),
+        getDisponibilites(user.id).catch(() => []),
       ]);
       setHistorique(hist);
       setOuvertes(open);
+      setMesDispos(dispos);
       setMyPawsitter(profile ? formatPawsitter(profile) : null);
       // Vérifie quelles gardes terminées ont déjà un avis
       const terminées = (hist ?? []).filter(h => h.statut === 'terminee');
@@ -207,13 +211,99 @@ export default function DemandesScreen({ user }) {
     );
   };
 
-  // Demandes ouvertes triées par compatibilité avec mon profil (les plus adaptées en premier)
+  // Demandes ouvertes : celles qui tombent sur mes jours libres et portent sur un de mes services d'abord
   const ouvertesScored = ouvertes.map(d => {
     const { pct, blocages } = (myPawsitter && d.proprio?.onboarding)
       ? calculerCompatibilite(d.proprio.onboarding, myPawsitter)
       : { pct: null, blocages: [] };
-    return { ...d, pct, blocages };
-  }).sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
+    return { ...d, pct, blocages, ...adequationDemande(d, myPawsitter, mesDispos) };
+  }).sort(trierDemandesOuvertes);
+  const ouvertesPourMoi = ouvertesScored.filter(d => d.recommandee);
+  const ouvertesAutres  = ouvertesScored.filter(d => !d.recommandee);
+
+  const renderOuverte = (d) => {
+    const accepting = acceptingId === d.id;
+    const colors = d.pct != null ? matchColor(d.pct) : null;
+    const dispoBadge = d.joursDispo == null ? null
+      : d.joursDispo === d.joursTotal ? { texte: '📅 Disponible toute la période', bg: COLORS.okBg, fg: COLORS.ok }
+      : d.joursDispo > 0 ? { texte: `📅 Disponible ${d.joursDispo} jour${d.joursDispo > 1 ? 's' : ''} sur ${d.joursTotal}`, bg: COLORS.warnBg, fg: COLORS.clay }
+      : { texte: '📅 Hors de tes disponibilités', bg: COLORS.sand, fg: COLORS.muted };
+    return (
+      <Card key={d.id} style={styles.demandeCard}>
+        <View style={styles.demandeHeader}>
+          <Avatar initials={d.proprio.nom?.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) ?? '??'} size={40} />
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.propreNom}>{d.proprio.nom}</Text>
+            <Text style={styles.animalLine}>
+              {d.proprio.ville ? `📍 ${d.proprio.ville}` : ''}
+              {d.animaux?.length > 0
+                ? `${d.proprio.ville ? ' · ' : ''}${d.animaux.map(a => `${a.emoji} ${a.nom}`).join(', ')}`
+                : (d.proprio.ville ? '' : '🐾 Animal non précisé')}
+            </Text>
+          </View>
+          {d.pct != null && (
+            <View style={[styles.ouverteMatchBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+              <Text style={[styles.ouverteMatchText, { color: colors.text }]}>{d.pct}%</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.datesBox}>
+          <View style={styles.dateItem}>
+            <Text style={styles.dateLabel}>Début</Text>
+            <Text style={styles.dateVal}>{formatDate(d.date_debut)}</Text>
+          </View>
+          <View style={styles.dateSep} />
+          <View style={styles.dateItem}>
+            <Text style={styles.dateLabel}>Fin</Text>
+            <Text style={styles.dateVal}>{formatDate(d.date_fin)}</Text>
+          </View>
+        </View>
+
+        <View style={styles.badgesRow}>
+          {SERVICE_MAP[d.service] ? (
+            <View style={[styles.servicePill, d.serviceOk === false && styles.servicePillKo]}>
+              <Text style={styles.servicePillText}>
+                {d.serviceOk ? '✓ ' : ''}{SERVICE_MAP[d.service].icon} {SERVICE_MAP[d.service].label}
+              </Text>
+            </View>
+          ) : null}
+          {dispoBadge && (
+            <View style={[styles.dispoBadge, { backgroundColor: dispoBadge.bg }]}>
+              <Text style={[styles.dispoBadgeText, { color: dispoBadge.fg }]}>{dispoBadge.texte}</Text>
+            </View>
+          )}
+        </View>
+        {d.serviceOk === false ? (
+          <Text style={styles.ouverteBlocage}>⚠️ Tu ne proposes pas ce service dans ton profil</Text>
+        ) : null}
+
+        {d.animaux?.map(a => <AnimalFiche key={a.id} animal={a} />)}
+
+        {d.message ? (
+          <View style={styles.messageBox}>
+            <Text style={styles.messageText}>"{d.message}"</Text>
+          </View>
+        ) : null}
+
+        {d.blocages?.length > 0 && d.blocages.map((b, i) => (
+          <Text key={i} style={styles.ouverteBlocage}>{b}</Text>
+        ))}
+
+        <TouchableOpacity
+          style={[styles.actionBtn, styles.accepterBtn, accepting && styles.actionBtnDisabled, { marginTop: 4 }]}
+          onPress={() => handleAccepterOuverte(d)}
+          disabled={accepting}
+          activeOpacity={0.8}
+        >
+          {accepting
+            ? <ActivityIndicator size="small" color={COLORS.white} />
+            : <Text style={styles.accepterText}>✓ Accepter cette garde</Text>
+          }
+        </TouchableOpacity>
+      </Card>
+    );
+  };
 
   if (loading) return (
     <View style={styles.center}>
@@ -276,79 +366,28 @@ export default function DemandesScreen({ user }) {
       )}
 
       {/* ── Demandes ouvertes (publiées par des propriétaires, non attribuées) ── */}
-      {ouvertesScored.length > 0 && (
+      {ouvertesScored.length > 0 && mesDispos.length === 0 && (
+        <TouchableOpacity style={styles.dispoInvite} onPress={onOuvrirDispos} disabled={!onOuvrirDispos} activeOpacity={0.85}>
+          <Text style={styles.dispoInviteTitre}>📅 Renseigne tes disponibilités</Text>
+          <Text style={styles.dispoInviteTexte}>
+            Les demandes qui tombent sur tes jours libres et portent sur tes services passeront en premier.
+            {onOuvrirDispos ? ' Appuie ici pour ouvrir ton calendrier →' : ''}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {ouvertesPourMoi.length > 0 && (
         <>
-          <SectionLabel label={`🔍 Demandes disponibles (${ouvertesScored.length})`} />
-          {ouvertesScored.map(d => {
-            const accepting = acceptingId === d.id;
-            const colors = d.pct != null ? matchColor(d.pct) : null;
-            return (
-              <Card key={d.id} style={styles.demandeCard}>
-                <View style={styles.demandeHeader}>
-                  <Avatar initials={d.proprio.nom?.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2) ?? '??'} size={40} />
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={styles.propreNom}>{d.proprio.nom}</Text>
-                    <Text style={styles.animalLine}>
-                      {d.proprio.ville ? `📍 ${d.proprio.ville}` : ''}
-                      {d.animaux?.length > 0
-                        ? `${d.proprio.ville ? ' · ' : ''}${d.animaux.map(a => `${a.emoji} ${a.nom}`).join(', ')}`
-                        : (d.proprio.ville ? '' : '🐾 Animal non précisé')}
-                    </Text>
-                  </View>
-                  {d.pct != null && (
-                    <View style={[styles.ouverteMatchBadge, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-                      <Text style={[styles.ouverteMatchText, { color: colors.text }]}>{d.pct}%</Text>
-                    </View>
-                  )}
-                </View>
+          <SectionLabel label={`⭐ Pour toi (${ouvertesPourMoi.length})`} />
+          <Text style={styles.sectionSub}>Sur tes jours de disponibilité, pour un service que tu proposes.</Text>
+          {ouvertesPourMoi.map(renderOuverte)}
+        </>
+      )}
 
-                <View style={styles.datesBox}>
-                  <View style={styles.dateItem}>
-                    <Text style={styles.dateLabel}>Début</Text>
-                    <Text style={styles.dateVal}>{formatDate(d.date_debut)}</Text>
-                  </View>
-                  <View style={styles.dateSep} />
-                  <View style={styles.dateItem}>
-                    <Text style={styles.dateLabel}>Fin</Text>
-                    <Text style={styles.dateVal}>{formatDate(d.date_fin)}</Text>
-                  </View>
-                </View>
-
-                {d.animaux?.map(a => <AnimalFiche key={a.id} animal={a} />)}
-
-                {SERVICE_MAP[d.service] ? (
-                  <View style={styles.servicePill}>
-                    <Text style={styles.servicePillText}>{SERVICE_MAP[d.service].icon} {SERVICE_MAP[d.service].label}</Text>
-                  </View>
-                ) : null}
-                {SERVICE_MAP[d.service] && myPawsitter && !proposeService(myPawsitter, d.service) ? (
-                  <Text style={styles.ouverteBlocage}>⚠️ Tu ne proposes pas ce service dans ton profil</Text>
-                ) : null}
-
-                {d.message ? (
-                  <View style={styles.messageBox}>
-                    <Text style={styles.messageText}>"{d.message}"</Text>
-                  </View>
-                ) : null}
-
-                {d.blocages?.length > 0 && d.blocages.map((b, i) => (
-                  <Text key={i} style={styles.ouverteBlocage}>{b}</Text>
-                ))}
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.accepterBtn, accepting && styles.actionBtnDisabled, { marginTop: 4 }]}
-                  onPress={() => handleAccepterOuverte(d)}
-                  disabled={accepting}
-                  activeOpacity={0.8}
-                >
-                  {accepting
-                    ? <ActivityIndicator size="small" color={COLORS.white} />
-                    : <Text style={styles.accepterText}>✓ Accepter cette garde</Text>
-                  }
-                </TouchableOpacity>
-              </Card>
-            );
-          })}
+      {ouvertesAutres.length > 0 && (
+        <>
+          <SectionLabel label={`🔍 ${ouvertesPourMoi.length > 0 ? 'Autres demandes' : 'Demandes disponibles'} (${ouvertesAutres.length})`} />
+          {ouvertesAutres.map(renderOuverte)}
         </>
       )}
 
@@ -471,6 +510,14 @@ const styles = StyleSheet.create({
   ouverteMatchBadge: { borderWidth: 1.5, borderRadius: RADIUS.sm, paddingHorizontal: 8, paddingVertical: 4 },
   ouverteMatchText:  { fontSize: 13, ...FONTS.heavy },
   ouverteBlocage:    { fontSize: 12, color: COLORS.clay, marginTop: 4 },
-  servicePill:       { alignSelf: 'flex-start', backgroundColor: COLORS.warm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.warnBorder, paddingHorizontal: 12, paddingVertical: 5, marginBottom: 10 },
+  servicePill:       { alignSelf: 'flex-start', backgroundColor: COLORS.warm, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.warnBorder, paddingHorizontal: 12, paddingVertical: 5 },
+  servicePillKo:     { backgroundColor: COLORS.sand, borderColor: COLORS.border },
+  badgesRow:         { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+  dispoBadge:        { borderRadius: RADIUS.full, paddingHorizontal: 12, paddingVertical: 5 },
+  dispoBadgeText:    { fontSize: 12, ...FONTS.bold },
+  sectionSub:        { fontSize: 12, color: COLORS.muted, marginTop: -4, marginBottom: 10 },
+  dispoInvite:       { backgroundColor: COLORS.infoBg, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.moss, padding: 14, marginBottom: 12 },
+  dispoInviteTitre:  { fontSize: 14, ...FONTS.heavy, color: COLORS.ink, marginBottom: 4 },
+  dispoInviteTexte:  { fontSize: 13, color: COLORS.moss, lineHeight: 19 },
   servicePillText:   { fontSize: 13, ...FONTS.bold, color: COLORS.ink },
 });

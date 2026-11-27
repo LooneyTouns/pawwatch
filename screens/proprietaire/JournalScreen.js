@@ -7,7 +7,7 @@ import {
 } from 'react-native';
 import { COLORS, FONTS, RADIUS, SHADOW } from '../../lib/theme';
 import { Badge, Avatar, Card, SectionLabel } from '../../components/UI';
-import { getJournaux, validerJournal, marquerGardeTerminee, soumettreAvis, hasAvis, getHistoriqueProprio, getMesDemandesOuvertes, annulerDemandeOuverte, creerDemandeOuverte, modifierDemandeOuverte, getAnimaux } from '../../lib/supabase';
+import { supabase, getJournaux, validerJournal, marquerGardeTerminee, soumettreAvis, hasAvis, getHistoriqueProprio, getMesDemandesOuvertes, annulerDemandeOuverte, creerDemandeOuverte, modifierDemandeOuverte, getAnimaux, getDemandesEnvoyees, annulerDemandeDirecte } from '../../lib/supabase';
 import { sendLocalNotification } from '../../hooks/useNotifications';
 import DemandeGardeModal from '../../components/DemandeGardeModal';
 import { SERVICE_MAP } from '../../lib/services';
@@ -125,7 +125,14 @@ const av = StyleSheet.create({
 const formatDate = (str) =>
   new Date(str).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
 
-export default function JournalScreen({ garde, user, onGardeTerminee, onCompleterAnimaux }) {
+const STATUT_DEMANDE = {
+  en_attente: { label: '⏳ En attente de réponse', bg: COLORS.warnBg, fg: COLORS.clay },
+  en_cours:   { label: '✓ Acceptée',              bg: COLORS.okBg,   fg: COLORS.ok   },
+  acceptee:   { label: '✓ Acceptée',              bg: COLORS.okBg,   fg: COLORS.ok   },
+  refusee:    { label: '✗ Refusée',               bg: '#FEE2E2',     fg: '#991B1B'   },
+};
+
+export default function JournalScreen({ garde, user, onGardeTerminee, onCompleterAnimaux, onChercherPawsitter }) {
   const [journaux,      setJournaux]      = useState([]);
   const [historique,    setHistorique]    = useState([]);
   const [loading,       setLoading]       = useState(true);
@@ -154,13 +161,72 @@ export default function JournalScreen({ garde, user, onGardeTerminee, onComplete
     setShowDemandeModal(true);
   };
 
+  const [demandesEnvoyees, setDemandesEnvoyees] = useState([]);
+  const [annulantId,       setAnnulantId]       = useState(null);
+
+  const rechargerDemandes = useCallback(() => {
+    if (!user?.id) return Promise.resolve([]);
+    getHistoriqueProprio(user.id).then(setHistorique).catch(() => {});
+    getMesDemandesOuvertes(user.id).then(setMesDemandes).catch(() => {});
+    return getDemandesEnvoyees(user.id)
+      .then(list => { setDemandesEnvoyees(list); return list; })
+      .catch(() => []);
+  }, [user?.id]);
+
   // Charger historique, demandes et animaux
   useEffect(() => {
     if (!user?.id) return;
-    getHistoriqueProprio(user.id).then(setHistorique).catch(() => {});
-    getMesDemandesOuvertes(user.id).then(setMesDemandes).catch(() => {});
+    rechargerDemandes();
     getAnimaux(user.id).then(setMesAnimaux).catch(() => {}).finally(() => setAnimauxCharges(true));
-  }, [user?.id]);
+  }, [user?.id, rechargerDemandes]);
+
+  // Réponse d'un pawsitter en direct : liste rafraîchie + notification
+  useEffect(() => {
+    if (!user?.id) return;
+    const channel = supabase
+      .channel('journal-proprio-demandes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'gardes',
+          filter: `proprio_id=eq.${user.id}` }, async (payload) => {
+        const s = payload.new?.statut;
+        const list = await rechargerDemandes();
+        if (s !== 'en_cours' && s !== 'refusee') return;
+        const d = list.find(x => x.id === payload.new.id);
+        if (!d) return;
+        sendLocalNotification({
+          title: s === 'en_cours' ? '✓ Demande acceptée' : 'Demande refusée',
+          body:  s === 'en_cours'
+            ? `${d.gardien.nom} a accepté ta demande de garde 🐾`
+            : `${d.gardien.nom} n'est pas disponible. Tu peux proposer la garde à un autre pawsitter.`,
+        }).catch(() => {});
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, rechargerDemandes]);
+
+  const handleAnnulerDemandeDirecte = (d) => {
+    Alert.alert(
+      'Annuler la demande',
+      `${d.gardien.nom} ne verra plus cette demande.`,
+      [
+        { text: 'Garder', style: 'cancel' },
+        {
+          text: 'Annuler la demande', style: 'destructive',
+          onPress: async () => {
+            setAnnulantId(d.id);
+            try {
+              await annulerDemandeDirecte(d.id);
+              setDemandesEnvoyees(prev => prev.filter(x => x.id !== d.id));
+            } catch (e) {
+              Alert.alert('Impossible d\'annuler', e?.message ?? 'Réessaie.');
+              rechargerDemandes();
+            } finally {
+              setAnnulantId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Les erreurs remontent jusqu'au formulaire, qui les affiche sans perdre la saisie.
   const handleSauvegarderDemande = async ({ animaux, debut, fin, message, service }) => {
@@ -207,9 +273,70 @@ export default function JournalScreen({ garde, user, onGardeTerminee, onComplete
     );
   };
 
+  const idsEnvoyees    = new Set(demandesEnvoyees.map(d => d.id));
+  const historiquePasse = historique.filter(h => !idsEnvoyees.has(h.id));
+
   if (!garde) return (
     <View style={{ flex: 1 }}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+
+        {/* ── Suivi des demandes envoyées à un pawsitter ── */}
+        {demandesEnvoyees.length > 0 && (
+          <>
+            <SectionLabel label={`📨 Demandes envoyées (${demandesEnvoyees.length})`} />
+            {demandesEnvoyees.map(d => {
+              const st  = STATUT_DEMANDE[d.statut] ?? STATUT_DEMANDE.en_attente;
+              const svc = SERVICE_MAP[d.service];
+              const initiales = d.gardien.nom.split(' ').map(p => p[0]).join('').toUpperCase().slice(0, 2);
+              return (
+                <Card key={d.id} style={styles.envoyeeCard}>
+                  <View style={styles.envoyeeHead}>
+                    <Avatar initials={initiales} photoUri={d.gardien.photo_url} size={40} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.envoyeeNom}>{d.gardien.nom}</Text>
+                      <Text style={styles.envoyeeDates}>
+                        {formatDateFr(d.date_debut)}{d.date_fin !== d.date_debut ? ` → ${formatDateFr(d.date_fin)}` : ''}
+                        {d.montant ? ` · ${d.montant} €` : ''}
+                      </Text>
+                    </View>
+                    <View style={[styles.envoyeeStatut, { backgroundColor: st.bg }]}>
+                      <Text style={[styles.envoyeeStatutText, { color: st.fg }]}>{st.label}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.envoyeeDetail}>
+                    {d.animaux.length ? `🐾 ${d.animaux.map(a => a.nom).join(', ')}` : '🐾 Animal non précisé'}
+                    {svc ? `   ${svc.icon} ${svc.label}` : ''}
+                  </Text>
+
+                  {d.statut === 'en_attente' && (
+                    <View style={styles.envoyeeFooter}>
+                      <Text style={styles.envoyeeHint}>Tu recevras une notification dès que {d.gardien.nom.split(' ')[0]} répond.</Text>
+                      <TouchableOpacity onPress={() => handleAnnulerDemandeDirecte(d)} disabled={annulantId === d.id} hitSlop={8}>
+                        {annulantId === d.id
+                          ? <ActivityIndicator size="small" color={COLORS.clay} />
+                          : <Text style={styles.envoyeeAnnuler}>Annuler</Text>}
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  {(d.statut === 'en_cours' || d.statut === 'acceptee') && (
+                    <Text style={styles.envoyeeHint}>La garde commence le {formatDateFr(d.date_debut)}.</Text>
+                  )}
+                  {d.statut === 'refusee' && (
+                    <View style={styles.envoyeeFooter}>
+                      <Text style={styles.envoyeeHint}>{d.gardien.nom.split(' ')[0]} n'est pas disponible sur ces dates.</Text>
+                      {onChercherPawsitter && (
+                        <TouchableOpacity onPress={onChercherPawsitter} hitSlop={8}>
+                          <Text style={styles.envoyeeChercher}>Chercher un autre pawsitter →</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                </Card>
+              );
+            })}
+          </>
+        )}
 
         {/* ── Mes demandes de garde ── */}
         <SectionLabel label={`📅 Mes demandes de garde (${mesDemandes.length})`} />
@@ -287,10 +414,10 @@ export default function JournalScreen({ garde, user, onGardeTerminee, onComplete
           <Text style={styles.demandeAddText}>➕ Créer une demande de garde</Text>
         </TouchableOpacity>
 
-        {historique.length > 0 && (
+        {historiquePasse.length > 0 && (
           <>
             <SectionLabel label="Gardes passées" />
-            {historique.map(h => (
+            {historiquePasse.map(h => (
               <Card key={h.id} style={styles.histCard}>
                 <View style={styles.histRow}>
                   <Text style={styles.histEmoji}>{h.animal?.emoji ?? '🐾'}</Text>
@@ -805,6 +932,17 @@ const styles = StyleSheet.create({
   demandeVide:       { alignItems: 'center', paddingVertical: 20 },
   demandeVideTitle:  { fontSize: 15, ...FONTS.bold, color: COLORS.ink, marginTop: 10 },
   demandeVideSub:    { fontSize: 13, color: COLORS.muted, textAlign: 'center', marginTop: 6, lineHeight: 19 },
+  envoyeeCard:       { marginBottom: 10 },
+  envoyeeHead:       { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  envoyeeNom:        { fontSize: 15, ...FONTS.heavy, color: COLORS.ink },
+  envoyeeDates:      { fontSize: 12, color: COLORS.muted, marginTop: 2, textTransform: 'capitalize' },
+  envoyeeStatut:     { borderRadius: RADIUS.full, paddingHorizontal: 10, paddingVertical: 4 },
+  envoyeeStatutText: { fontSize: 11, ...FONTS.bold },
+  envoyeeDetail:     { fontSize: 13, color: COLORS.ink, marginBottom: 6 },
+  envoyeeFooter:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  envoyeeHint:       { flex: 1, fontSize: 12, color: COLORS.muted, fontStyle: 'italic' },
+  envoyeeAnnuler:    { fontSize: 13, ...FONTS.bold, color: COLORS.clay },
+  envoyeeChercher:   { fontSize: 13, ...FONTS.bold, color: COLORS.moss },
   fichesAlerte:      { backgroundColor: COLORS.warnBg, borderWidth: 1.5, borderColor: COLORS.warnBorder, borderRadius: RADIUS.md, padding: 14, marginBottom: 12 },
   fichesAlerteTitre: { fontSize: 14, ...FONTS.heavy, color: COLORS.ink, marginBottom: 4 },
   fichesAlerteTexte: { fontSize: 13, color: COLORS.clay, lineHeight: 19 },
