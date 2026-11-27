@@ -7,7 +7,7 @@ import * as SystemUI from 'expo-system-ui';
 Appearance.setColorScheme?.('light');
 SystemUI.setBackgroundColorAsync('#FAF8F4');
 import { useFonts } from 'expo-font';
-// Stripe n'a pas de module web — on importe conditionnellement pour éviter le crash Netlify
+// Stripe n'a pas de module web — on importe conditionnellement pour éviter le crash du bundle web
 const STRIPE_PUBLISHABLE_KEY = 'pk_live_51Hk4pOLhKS8wkkRQYe1F2McJyznT9NLPWRfAEN8Z9roEDrqYSVPT60a1JyKKxX87i1vpKO7XbaV5kPEoJ7yVMYWF00Dh7kYEEE';
 const StripeProvider = Platform.OS !== 'web'
   ? require('@stripe/stripe-react-native').StripeProvider
